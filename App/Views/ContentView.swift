@@ -91,6 +91,18 @@ struct ContentView: View {
                     pasteboard.clearContents()
                     pasteboard.setString(command, forType: .string)
                 }
+
+                MenuButton("Copy Claude Code setup command", isMenuPresented: $isMenuPresented) {
+                    let serverPath = Bundle.main.bundleURL
+                        .appendingPathComponent("Contents/MacOS/imcp-server")
+                        .path
+
+                    let command = "claude mcp add iMCP --scope user -- \(serverPath)"
+
+                    let pasteboard = NSPasteboard.general
+                    pasteboard.clearContents()
+                    pasteboard.setString(command, forType: .string)
+                }
             }
             .padding(.top, 8)
             .padding(.bottom, 2)
