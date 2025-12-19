@@ -1,0 +1,27 @@
+// ABOUTME: Template for local development overrides. Copy to Local.xcconfig and fill in your values.
+// ABOUTME: Local.xcconfig is gitignored and will not be committed to the repository.
+
+// =============================================================================
+// Local Development Configuration
+// =============================================================================
+// Copy this file to Local.xcconfig and customize for your development environment.
+// This file is gitignored to keep your personal settings out of source control.
+//
+// INSTRUCTIONS:
+// 1. Copy this file: cp Local.xcconfig.example Local.xcconfig
+// 2. Replace the placeholder values below with your own
+// 3. Clean and rebuild the project in Xcode
+// =============================================================================
+
+// Your Apple Developer Team ID (found in Apple Developer Portal > Membership)
+DEVELOPMENT_TEAM = YOUR_TEAM_ID_HERE
+
+// Bundle identifier prefix for your fork (e.g., com.yourcompany)
+// This will override the default com.loopwork identifiers
+PRODUCT_BUNDLE_IDENTIFIER_PREFIX = com.yourcompany
+
+// Override the main app bundle identifier
+PRODUCT_BUNDLE_IDENTIFIER = $(PRODUCT_BUNDLE_IDENTIFIER_PREFIX).iMCP
+
+// Override the CLI tool bundle identifier
+IMCP_SERVER_BUNDLE_IDENTIFIER = $(PRODUCT_BUNDLE_IDENTIFIER_PREFIX).imcp-server

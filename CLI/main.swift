@@ -91,16 +91,18 @@ actor StdioProxy {
         // Set up state monitoring for the entire lifetime of the connection
         connection.stateUpdateHandler = { state in
             Task { [weak self] in
-                await self?.handleConnectionState(state, continuation: nil)
+                await self?.handleConnectionState(state, continuation: nil, connectionState: nil)
             }
         }
 
         // Wait for the connection to become ready
         try await withCheckedThrowingContinuation {
             (continuation: CheckedContinuation<Void, Swift.Error>) in
+            let connectionState = ConnectionState()
             connection.stateUpdateHandler = { state in
                 Task { [weak self] in
-                    await self?.handleConnectionState(state, continuation: continuation)
+                    await self?.handleConnectionState(
+                        state, continuation: continuation, connectionState: connectionState)
                 }
             }
         }
@@ -149,22 +151,39 @@ actor StdioProxy {
 
     /// Handles connection state changes
     private func handleConnectionState(
-        _ state: NWConnection.State, continuation: CheckedContinuation<Void, Swift.Error>?
+        _ state: NWConnection.State,
+        continuation: CheckedContinuation<Void, Swift.Error>?,
+        connectionState: ConnectionState?
     ) async {
         switch state {
         case .ready:
             await log.debug("Connection established to \(endpoint)")
-            continuation?.resume()
+            if let connectionState = connectionState, await connectionState.checkAndSetResumed() {
+                continuation?.resume()
+            }
         case .failed(let error):
             await log.debug("Connection failed: \(error)")
             if let continuation = continuation {
-                continuation.resume(throwing: error)
+                if let connectionState = connectionState {
+                    if await connectionState.checkAndSetResumed() {
+                        continuation.resume(throwing: error)
+                    }
+                } else {
+                    // Fallback for calls without connectionState (shouldn't happen for start logic)
+                    continuation.resume(throwing: error)
+                }
             }
             await stop()
         case .cancelled:
             await log.debug("Connection cancelled")
             if let continuation = continuation {
-                continuation.resume(throwing: CancellationError())
+                if let connectionState = connectionState {
+                    if await connectionState.checkAndSetResumed() {
+                        continuation.resume(throwing: CancellationError())
+                    }
+                } else {
+                     continuation.resume(throwing: CancellationError())
+                }
             }
             await stop()
         case .waiting(let error):

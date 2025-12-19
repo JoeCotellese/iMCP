@@ -243,8 +243,11 @@ final class CaptureService: NSObject, Service {
             captureSession.addOutput(photoOutput)
 
             return try await withCheckedThrowingContinuation { continuation in
+                let lock = NSLock()
                 var hasResumed = false
                 let resumeOnce = { (result: Result<Value, Error>) in
+                    lock.lock()
+                    defer { lock.unlock() }
                     guard !hasResumed else { return }
                     hasResumed = true
                     continuation.resume(with: result)
@@ -252,7 +255,12 @@ final class CaptureService: NSObject, Service {
 
                 let timeoutTask = Task {
                     try await Task.sleep(for: .seconds(10))
-                    if !hasResumed {
+
+                    lock.lock()
+                    let alreadyResumed = hasResumed
+                    lock.unlock()
+
+                    if !alreadyResumed {
                         await MainActor.run {
                             captureSession.stopRunning()
                             self.currentPhotoDelegate = nil
@@ -539,7 +547,10 @@ final class CaptureService: NSObject, Service {
                     throw NSError(
                         domain: "CaptureServiceError",
                         code: 26,
-                        userInfo: [NSLocalizedDescriptionKey: "No displays available for application capture"]
+                        userInfo: [
+                            NSLocalizedDescriptionKey:
+                                "No displays available for application capture"
+                        ]
                     )
                 }
                 contentFilter = SCContentFilter(
@@ -562,8 +573,11 @@ final class CaptureService: NSObject, Service {
             }
 
             return try await withCheckedThrowingContinuation { continuation in
+                let lock = NSLock()
                 var hasResumed = false
                 let resumeOnce = { (result: Result<Value, Error>) in
+                    lock.lock()
+                    defer { lock.unlock() }
                     guard !hasResumed else { return }
                     hasResumed = true
                     continuation.resume(with: result)
@@ -571,7 +585,12 @@ final class CaptureService: NSObject, Service {
 
                 let timeoutTask = Task {
                     try await Task.sleep(for: .seconds(10))
-                    if !hasResumed {
+
+                    lock.lock()
+                    let alreadyResumed = hasResumed
+                    lock.unlock()
+
+                    if !alreadyResumed {
                         resumeOnce(
                             .failure(
                                 NSError(

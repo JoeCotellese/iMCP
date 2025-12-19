@@ -257,14 +257,25 @@ final class ServerController: ObservableObject {
 
                 // Create a continuation to wait for the user's response
                 return await withCheckedContinuation { continuation in
+                    let lock = NSLock()
+                    var hasResumed = false
+
+                    let resumeOnce = { (value: Bool) in
+                        lock.lock()
+                        defer { lock.unlock() }
+                        guard !hasResumed else { return }
+                        hasResumed = true
+                        continuation.resume(returning: value)
+                    }
+
                     Task { @MainActor in
                         self.showConnectionApprovalAlert(
                             clientID: clientInfo.name,
                             approve: {
-                                continuation.resume(returning: true)
+                                resumeOnce(true)
                             },
                             deny: {
-                                continuation.resume(returning: false)
+                                resumeOnce(false)
                             }
                         )
                     }
