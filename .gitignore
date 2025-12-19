@@ -5,6 +5,9 @@
 ## User settings
 xcuserdata/
 
+## Local development configuration (copy Local.xcconfig.example to Local.xcconfig)
+Local.xcconfig
+
 ## Obj-C/Swift specific
 *.hmap
 

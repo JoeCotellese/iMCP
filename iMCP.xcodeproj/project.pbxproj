@@ -47,6 +47,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A1B2C3D4E5F6A7B8C9D0E1F2 /* Local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig; sourceTree = "<group>"; };
 		F8F44E6D2D59038D0075D79C /* iMCP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iMCP.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F8F44EB62D5908D00075D79C /* imcp-server */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "imcp-server"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -111,6 +112,7 @@
 		F8F44E642D59038D0075D79C = {
 			isa = PBXGroup;
 			children = (
+				A1B2C3D4E5F6A7B8C9D0E1F2 /* Local.xcconfig */,
 				F8F44E6F2D59038D0075D79C /* App */,
 				F8F44EB72D5908D00075D79C /* CLI */,
 				F8F44E6E2D59038D0075D79C /* Products */,
@@ -380,6 +382,7 @@
 		};
 		F8F44E932D59038E0075D79C /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A1B2C3D4E5F6A7B8C9D0E1F2 /* Local.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -388,7 +391,6 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 8;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = R7AYS6Z734;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -418,7 +420,6 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.1;
 				MARKETING_VERSION = 1.3.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.loopwork.iMCP;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = macosx;
@@ -431,6 +432,7 @@
 		};
 		F8F44E942D59038E0075D79C /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A1B2C3D4E5F6A7B8C9D0E1F2 /* Local.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -440,7 +442,6 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 8;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
@@ -482,10 +483,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.1;
 				MARKETING_VERSION = 1.3.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.loopwork.iMCP;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "iMCP Developer Build Provision Profile";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = macosx;
 				SUPPORTS_MACCATALYST = NO;
@@ -497,13 +495,13 @@
 		};
 		F8F44EBB2D5908D00075D79C /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A1B2C3D4E5F6A7B8C9D0E1F2 /* Local.xcconfig */;
 			buildSettings = {
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = R7AYS6Z734;
 				MACOSX_DEPLOYMENT_TARGET = 15.1;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.loopwork.imcp-server";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(IMCP_SERVER_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -513,16 +511,14 @@
 		};
 		F8F44EBC2D5908D00075D79C /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A1B2C3D4E5F6A7B8C9D0E1F2 /* Local.xcconfig */;
 			buildSettings = {
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
-				CODE_SIGN_STYLE = Manual;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=macosx*]" = R7AYS6Z734;
 				MACOSX_DEPLOYMENT_TARGET = 15.1;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.loopwork.imcp-server";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(IMCP_SERVER_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
