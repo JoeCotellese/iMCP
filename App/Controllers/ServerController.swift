@@ -17,6 +17,18 @@ private let serviceDomain = "local."
 
 private let log = Logger.server
 
+// ABOUTME: Defines ServiceCategory for grouping services and ServiceConfig for service metadata.
+// ABOUTME: Used to organize services in the Settings UI with proper categorization.
+
+enum ServiceCategory: String, CaseIterable, Identifiable {
+    case personalData = "Personal Data"
+    case productivity = "Productivity"
+    case mediaAndHome = "Media & Home"
+    case system = "System"
+
+    var id: String { rawValue }
+}
+
 struct ServiceConfig: Identifiable {
     let id: String
     let name: String
@@ -24,6 +36,8 @@ struct ServiceConfig: Identifiable {
     let color: Color
     let service: any Service
     let binding: Binding<Bool>
+    let category: ServiceCategory
+    let hasDetailView: Bool
 
     var isActivated: Bool {
         get async {
@@ -36,7 +50,9 @@ struct ServiceConfig: Identifiable {
         iconName: String,
         color: Color,
         service: any Service,
-        binding: Binding<Bool>
+        binding: Binding<Bool>,
+        category: ServiceCategory,
+        hasDetailView: Bool = false
     ) {
         self.id = String(describing: type(of: service))
         self.name = name
@@ -44,6 +60,8 @@ struct ServiceConfig: Identifiable {
         self.color = color
         self.service = service
         self.binding = binding
+        self.category = category
+        self.hasDetailView = hasDetailView
     }
 }
 
@@ -74,68 +92,88 @@ enum ServiceRegistry {
         weatherEnabled: Binding<Bool>
     ) -> [ServiceConfig] {
         [
+            // Personal Data
             ServiceConfig(
                 name: "Calendar",
                 iconName: "calendar",
                 color: .red,
                 service: CalendarService.shared,
-                binding: calendarEnabled
-            ),
-            ServiceConfig(
-                name: "Capture",
-                iconName: "camera.on.rectangle.fill",
-                color: .gray.mix(with: .black, by: 0.7),
-                service: CaptureService.shared,
-                binding: captureEnabled
+                binding: calendarEnabled,
+                category: .personalData
             ),
             ServiceConfig(
                 name: "Contacts",
                 iconName: "person.crop.square.filled.and.at.rectangle.fill",
                 color: .brown,
                 service: ContactsService.shared,
-                binding: contactsEnabled
+                binding: contactsEnabled,
+                category: .personalData
             ),
             ServiceConfig(
                 name: "Location",
                 iconName: "location.fill",
                 color: .blue,
                 service: LocationService.shared,
-                binding: locationEnabled
+                binding: locationEnabled,
+                category: .personalData
             ),
             ServiceConfig(
                 name: "Maps",
                 iconName: "mappin.and.ellipse",
                 color: .purple,
                 service: MapsService.shared,
-                binding: mapsEnabled
+                binding: mapsEnabled,
+                category: .personalData
             ),
             ServiceConfig(
                 name: "Messages",
                 iconName: "message.fill",
                 color: .green,
                 service: MessageService.shared,
-                binding: messagesEnabled
+                binding: messagesEnabled,
+                category: .personalData
             ),
             ServiceConfig(
                 name: "Reminders",
                 iconName: "list.bullet",
                 color: .orange,
                 service: RemindersService.shared,
-                binding: remindersEnabled
-            ),
-            ServiceConfig(
-                name: "Shortcuts",
-                iconName: "apps.iphone",
-                color: .pink,
-                service: ShortcutsService.shared,
-                binding: shortcutsEnabled
+                binding: remindersEnabled,
+                category: .personalData
             ),
             ServiceConfig(
                 name: "Weather",
                 iconName: "cloud.sun.fill",
                 color: .cyan,
                 service: WeatherService.shared,
-                binding: weatherEnabled
+                binding: weatherEnabled,
+                category: .personalData
+            ),
+            // Productivity
+            ServiceConfig(
+                name: "Shortcuts",
+                iconName: "apps.iphone",
+                color: .pink,
+                service: ShortcutsService.shared,
+                binding: shortcutsEnabled,
+                category: .productivity
+            ),
+            // System
+            ServiceConfig(
+                name: "Capture",
+                iconName: "camera.on.rectangle.fill",
+                color: .gray.mix(with: .black, by: 0.7),
+                service: CaptureService.shared,
+                binding: captureEnabled,
+                category: .system
+            ),
+            ServiceConfig(
+                name: "Utilities",
+                iconName: "wrench.and.screwdriver.fill",
+                color: .gray,
+                service: UtilitiesService.shared,
+                binding: utilitiesEnabled,
+                category: .system
             ),
         ]
     }
@@ -183,6 +221,10 @@ final class ServerController: ObservableObject {
             utilitiesEnabled: $utilitiesEnabled,
             weatherEnabled: $weatherEnabled
         )
+    }
+
+    var enabledServicesCount: Int {
+        computedServiceConfigs.filter { $0.binding.wrappedValue }.count
     }
 
     private var currentServiceBindings: [String: Binding<Bool>] {

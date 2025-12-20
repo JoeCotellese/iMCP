@@ -2,30 +2,25 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var serverController: ServerController
-    @State private var selectedSection: SettingsSection? = .general
+    @State private var selectedSection: SettingsSection? = .services
 
     enum SettingsSection: String, CaseIterable, Identifiable {
+        case services = "Services"
         case general = "General"
 
         var id: String { self.rawValue }
 
         var icon: String {
             switch self {
+            case .services: return "square.grid.2x2"
             case .general: return "gear"
             }
         }
     }
 
     var body: some View {
-        NavigationView {
-            List(
-                selection: .init(
-                    get: { selectedSection },
-                    set: { section in
-                        selectedSection = section
-                    }
-                )
-            ) {
+        NavigationSplitView {
+            List(selection: $selectedSection) {
                 Section {
                     ForEach(SettingsSection.allCases) { section in
                         Label(section.rawValue, systemImage: section.icon)
@@ -33,9 +28,12 @@ struct SettingsView: View {
                     }
                 }
             }
-
+        } detail: {
             if let selectedSection {
                 switch selectedSection {
+                case .services:
+                    ServiceSettingsView(serverController: serverController)
+                        .navigationTitle("Services")
                 case .general:
                     GeneralSettingsView(serverController: serverController)
                         .navigationTitle("General")
@@ -54,11 +52,6 @@ struct SettingsView: View {
             let window = NSApplication.shared.keyWindow
             window?.toolbarStyle = .unified
             window?.toolbar?.displayMode = .iconOnly
-        }
-        .onAppear {
-            if selectedSection == nil, let firstSection = SettingsSection.allCases.first {
-                selectedSection = firstSection
-            }
         }
     }
 
