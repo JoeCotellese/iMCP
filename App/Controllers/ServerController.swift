@@ -192,6 +192,13 @@ final class ServerController: ObservableObject {
 
     private let networkManager = ServerNetworkManager()
 
+    // MARK: - HTTP Transport
+    private var httpServer: HTTPMCPServer?
+    private var httpRequestHandler: MCPRequestHandler?
+
+    // MARK: - AppStorage for Transport Mode
+    @AppStorage("useHTTPTransport") var useHTTPTransport = true  // Default to HTTP for new transport
+
     // MARK: - AppStorage for Service Enablement States
     @AppStorage("calendarEnabled") private var calendarEnabled = false
     @AppStorage("captureEnabled") private var captureEnabled = false
@@ -297,7 +304,15 @@ final class ServerController: ObservableObject {
         Task {
             // Set initial bindings before starting the server, using own @AppStorage values
             await networkManager.updateServiceBindings(self.currentServiceBindings)
-            await self.networkManager.start()
+
+            if self.useHTTPTransport {
+                // Start HTTP transport
+                await self.startHTTPTransport()
+            } else {
+                // Start Bonjour transport
+                await self.networkManager.start()
+            }
+
             self.updateServerStatus("Running")
 
             await networkManager.setConnectionApprovalHandler {
@@ -337,24 +352,118 @@ final class ServerController: ObservableObject {
         }
     }
 
+    // MARK: - HTTP Transport Management
+
+    private func startHTTPTransport() async {
+        log.info("Starting HTTP transport")
+
+        // Create request handler
+        let handler = MCPRequestHandler()
+        self.httpRequestHandler = handler
+
+        // Set up approval handler for HTTP clients
+        await handler.setApprovalHandler { [weak self] clientID, clientInfo in
+            guard let self = self else { return false }
+
+            log.debug("HTTP: Approval handler called for client \(clientInfo.name)")
+
+            return await withCheckedContinuation { continuation in
+                let lock = NSLock()
+                var hasResumed = false
+
+                let resumeOnce = { (value: Bool) in
+                    lock.lock()
+                    defer { lock.unlock() }
+                    guard !hasResumed else { return }
+                    hasResumed = true
+                    continuation.resume(returning: value)
+                }
+
+                Task { @MainActor in
+                    self.showConnectionApprovalAlert(
+                        clientID: clientInfo.name,
+                        approve: {
+                            resumeOnce(true)
+                        },
+                        deny: {
+                            resumeOnce(false)
+                        }
+                    )
+                }
+            }
+        }
+
+        // Update service bindings for HTTP handler
+        await handler.updateServiceBindings(self.currentServiceBindingsAsBool)
+
+        // Create and start HTTP server
+        let server = HTTPMCPServer(requestHandler: handler)
+        self.httpServer = server
+
+        do {
+            try await server.start()
+            log.notice("HTTP transport started on port \(mcpHTTPPort)")
+        } catch {
+            log.error("Failed to start HTTP transport: \(error)")
+        }
+    }
+
+    private func stopHTTPTransport() async {
+        if let server = httpServer {
+            await server.stop()
+            httpServer = nil
+            httpRequestHandler = nil
+            log.notice("HTTP transport stopped")
+        }
+    }
+
+    /// Service bindings as Bool dictionary for HTTP handler
+    private var currentServiceBindingsAsBool: [String: Bool] {
+        Dictionary(
+            uniqueKeysWithValues: computedServiceConfigs.map {
+                ($0.id, $0.binding.wrappedValue)
+            }
+        )
+    }
+
     func updateServiceBindings(_ bindings: [String: Binding<Bool>]) async {
         // This function is still called by ContentView's onChange when user toggles services.
         // It ensures ServerNetworkManager is updated and clients are notified.
         await networkManager.updateServiceBindings(bindings)
+
+        // Also update HTTP handler if active
+        if let handler = httpRequestHandler {
+            let boolBindings = Dictionary(uniqueKeysWithValues: bindings.map { ($0.key, $0.value.wrappedValue) })
+            await handler.updateServiceBindings(boolBindings)
+        }
     }
 
     func startServer() async {
-        await networkManager.start()
+        if useHTTPTransport {
+            await startHTTPTransport()
+        } else {
+            await networkManager.start()
+        }
         updateServerStatus("Running")
     }
 
     func stopServer() async {
-        await networkManager.stop()
+        if useHTTPTransport {
+            await stopHTTPTransport()
+        } else {
+            await networkManager.stop()
+        }
         updateServerStatus("Stopped")
     }
 
     func setEnabled(_ enabled: Bool) async {
         await networkManager.setEnabled(enabled)
+
+        // Also update HTTP handler if active
+        if let handler = httpRequestHandler {
+            await handler.setEnabled(enabled)
+        }
+
         updateServerStatus(enabled ? "Running" : "Disabled")
     }
 

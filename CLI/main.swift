@@ -6,6 +6,13 @@ import SystemPackage
 
 import struct Foundation.Data
 import class Foundation.RunLoop
+import class Foundation.FileHandle
+import struct Foundation.URL
+import struct Foundation.UUID
+import class Foundation.URLSession
+import struct Foundation.URLRequest
+import class Foundation.URLResponse
+import class Foundation.HTTPURLResponse
 
 var log = Logger(label: "me.mattt.iMCP.server") { StreamLogHandler.standardError(label: $0) }
 #if DEBUG
@@ -636,10 +643,157 @@ actor MCPService: Service {
     }
 }
 
-// Update the ServiceLifecycle initialization
+// MARK: - HTTP Transport Service
+
+/// HTTP-based MCP service - simpler than Bonjour, tries localhost:9847
+actor HTTPMCPService: Service {
+    private let serverURL = URL(string: "http://127.0.0.1:9847")!
+    private let clientID = UUID().uuidString
+    private var isRunning = true
+
+    func run() async throws {
+        await log.info("Starting HTTP MCP client connecting to \(serverURL)")
+
+        // Check if HTTP server is available
+        guard await isHTTPServerAvailable() else {
+            await log.info("HTTP server not available, falling back to Bonjour")
+            throw HTTPServiceError.serverNotAvailable
+        }
+
+        await log.info("HTTP server available, using HTTP transport")
+
+        // Main loop: read from stdin, send to server, write response to stdout
+        let stdin = FileHandle.standardInput
+        let stdout = FileHandle.standardOutput
+
+        var buffer = Data()
+
+        while isRunning {
+            let data = stdin.availableData
+
+            if data.isEmpty {
+                await log.info("EOF on stdin, exiting")
+                break
+            }
+
+            buffer.append(data)
+
+            // Process complete JSON-RPC messages (newline-delimited)
+            while let newlineIndex = buffer.firstIndex(of: UInt8(ascii: "\n")) {
+                let messageData = buffer[..<newlineIndex]
+                buffer = Data(buffer[(newlineIndex + 1)...])
+
+                guard !messageData.isEmpty else { continue }
+
+                do {
+                    let response = try await sendRequest(Data(messageData))
+                    var outputData = response
+                    outputData.append(UInt8(ascii: "\n"))
+                    stdout.write(outputData)
+                } catch {
+                    await log.error("HTTP request failed: \(error)")
+                    // Write error response to stdout
+                    let errorResponse = #"{"jsonrpc":"2.0","error":{"code":-32603,"message":"HTTP error"},"id":null}"#
+                    if var outputData = errorResponse.data(using: .utf8) {
+                        outputData.append(UInt8(ascii: "\n"))
+                        stdout.write(outputData)
+                    }
+                }
+            }
+        }
+    }
+
+    private func isHTTPServerAvailable() async -> Bool {
+        let url = serverURL.appendingPathComponent("health")
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 2
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse {
+                return httpResponse.statusCode == 200
+            }
+        } catch {
+            await log.debug("HTTP health check failed: \(error)")
+        }
+        return false
+    }
+
+    private func sendRequest(_ data: Data) async throws -> Data {
+        let url = serverURL.appendingPathComponent("mcp")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(clientID, forHTTPHeaderField: "X-MCP-Client-ID")
+        request.httpBody = data
+        request.timeoutInterval = 300  // 5 minutes for long-running tools
+
+        let (responseData, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw HTTPServiceError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            return responseData
+        case 202:
+            // Pending approval - wait and retry
+            await log.info("Connection pending approval, waiting...")
+            try await Task.sleep(for: .seconds(2))
+            return try await sendRequest(data)
+        case 401:
+            throw HTTPServiceError.unauthorized
+        default:
+            throw HTTPServiceError.serverError(httpResponse.statusCode)
+        }
+    }
+
+    func shutdown() async throws {
+        isRunning = false
+    }
+}
+
+enum HTTPServiceError: Swift.Error {
+    case serverNotAvailable
+    case invalidResponse
+    case unauthorized
+    case serverError(Int)
+}
+
+/// Combined service that tries HTTP first, falls back to Bonjour
+actor CombinedMCPService: Service {
+    private let httpService = HTTPMCPService()
+    private let bonjourService = MCPService()
+    private var activeService: (any Service)?
+
+    func run() async throws {
+        // Try HTTP first
+        do {
+            await log.info("Trying HTTP transport...")
+            activeService = httpService
+            try await httpService.run()
+        } catch HTTPServiceError.serverNotAvailable {
+            // Fall back to Bonjour
+            await log.info("HTTP not available, using Bonjour transport...")
+            activeService = bonjourService
+            try await bonjourService.run()
+        }
+    }
+
+    func shutdown() async throws {
+        if let service = activeService {
+            try await (service as? HTTPMCPService)?.shutdown()
+            try await (service as? MCPService)?.shutdown()
+        }
+    }
+}
+
+// Update the ServiceLifecycle initialization - use combined service
 let lifecycle = ServiceGroup(
     configuration: .init(
-        services: [MCPService()],
+        services: [CombinedMCPService()],
         logger: log
     )
 )
