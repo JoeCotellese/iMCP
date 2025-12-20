@@ -10,13 +10,13 @@ struct ContentView: View {
 
     private let aboutWindowController: AboutWindowController
 
-    private var serviceConfigs: [ServiceConfig] {
-        serverController.computedServiceConfigs
+    private var enabledCount: Int {
+        serverController.enabledServicesCount
     }
 
     private var serviceBindings: [String: Binding<Bool>] {
         Dictionary(
-            uniqueKeysWithValues: serviceConfigs.map {
+            uniqueKeysWithValues: serverController.computedServiceConfigs.map {
                 ($0.id, $0.binding)
             })
     }
@@ -46,34 +46,34 @@ struct ContentView: View {
             .onChange(of: isEnabled, initial: true) {
                 Task {
                     await serverController.setEnabled(isEnabled)
-                }
-            }
-
-            if isEnabled {
-                VStack(alignment: .leading, spacing: 8) {
-                    Divider()
-
-                    Text("Services")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.secondary)
-                        .opacity(isEnabled ? 1.0 : 0.4)
-                        .padding(.horizontal, 14)
-
-                    ForEach(serviceConfigs) { config in
-                        ServiceToggleView(config: config)
+                    if isEnabled {
+                        await serverController.updateServiceBindings(serviceBindings)
                     }
                 }
-                .padding(.top, 8)
-                .padding(.bottom, 4)
-                .padding(.horizontal, 2)
-                .onChange(of: serviceConfigs.map { $0.binding.wrappedValue }, initial: true) {
+            }
+            .onChange(of: serviceBindings.map { $0.value.wrappedValue }) {
+                // Only update bindings when they change (not on initial), and only if enabled
+                if isEnabled {
                     Task {
                         await serverController.updateServiceBindings(serviceBindings)
                     }
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
-                .animation(.easeInOut(duration: 0.3), value: isEnabled)
             }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Divider()
+
+                MenuButton(
+                    "Services (\(enabledCount) enabled)",
+                    isMenuPresented: $isMenuPresented
+                ) {
+                    openSettings()
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+            }
+            .padding(.top, 8)
+            .padding(.bottom, 2)
+            .padding(.horizontal, 2)
 
             VStack(alignment: .leading, spacing: 2) {
                 Divider()
@@ -113,6 +113,7 @@ struct ContentView: View {
 
                 MenuButton("Settings...", isMenuPresented: $isMenuPresented) {
                     openSettings()
+                    NSApp.activate(ignoringOtherApps: true)
                 }
 
                 MenuButton("About iMCP", isMenuPresented: $isMenuPresented) {
