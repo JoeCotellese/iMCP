@@ -1,0 +1,206 @@
+// ABOUTME: Service for running macOS Shortcuts via MCP.
+// ABOUTME: Provides tools to list and execute user shortcuts through the shortcuts CLI.
+
+import AppKit
+import Foundation
+import JSONSchema
+import OSLog
+
+private let log = Logger.service("shortcuts")
+
+final class ShortcutsService: Service {
+    static let shared = ShortcutsService()
+
+    private let shortcutsPath = "/usr/bin/shortcuts"
+
+    var tools: [Tool] {
+        Tool(
+            name: "shortcuts_list",
+            description: "List all available shortcuts on this Mac",
+            inputSchema: .object(
+                properties: [:],
+                additionalProperties: false
+            ),
+            annotations: .init(
+                title: "List Shortcuts",
+                readOnlyHint: true,
+                openWorldHint: false
+            )
+        ) { _ in
+            try await self.listShortcuts()
+        }
+
+        Tool(
+            name: "shortcuts_run",
+            description: "Run a shortcut by name, optionally with text input",
+            inputSchema: .object(
+                properties: [
+                    "name": .string(
+                        description: "The name of the shortcut to run"
+                    ),
+                    "input": .string(
+                        description: "Optional text input to pass to the shortcut"
+                    ),
+                ],
+                required: ["name"],
+                additionalProperties: false
+            ),
+            annotations: .init(
+                title: "Run Shortcut",
+                destructiveHint: true,
+                openWorldHint: true
+            )
+        ) { arguments in
+            guard case let .string(name) = arguments["name"] else {
+                throw NSError(
+                    domain: "ShortcutsError",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Shortcut name is required"]
+                )
+            }
+
+            let input = arguments["input"]?.stringValue
+
+            return try await self.runShortcut(name: name, input: input)
+        }
+    }
+
+    // MARK: - Private Implementation
+
+    private func listShortcuts() async throws -> Value {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: shortcutsPath)
+        process.arguments = ["list"]
+
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            log.error("Failed to run shortcuts command: \(error.localizedDescription)")
+            throw NSError(
+                domain: "ShortcutsError",
+                code: 2,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to run shortcuts command: \(error.localizedDescription)"
+                ]
+            )
+        }
+
+        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+
+        guard process.terminationStatus == 0 else {
+            let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown error"
+            log.error("shortcuts list failed: \(errorMessage)")
+            throw NSError(
+                domain: "ShortcutsError",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "shortcuts list failed: \(errorMessage)"]
+            )
+        }
+
+        guard let output = String(data: outputData, encoding: .utf8) else {
+            return .array([])
+        }
+
+        let shortcuts = output
+            .split(separator: "\n")
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+
+        log.info("Found \(shortcuts.count) shortcuts")
+
+        return .array(shortcuts.map { .string($0) })
+    }
+
+    private func runShortcut(name: String, input: String?) async throws -> Value {
+        log.info("Running shortcut: \(name, privacy: .public)")
+
+        var arguments = ["run", name]
+        var inputFileURL: URL?
+        var outputFileURL: URL?
+
+        // Handle input via temp file if provided
+        if let input = input {
+            let tempDir = FileManager.default.temporaryDirectory
+            inputFileURL = tempDir.appendingPathComponent("shortcut_input_\(UUID().uuidString).txt")
+            try input.write(to: inputFileURL!, atomically: true, encoding: .utf8)
+            arguments.append(contentsOf: ["--input-path", inputFileURL!.path])
+        }
+
+        // Set up output file
+        let tempDir = FileManager.default.temporaryDirectory
+        outputFileURL = tempDir.appendingPathComponent("shortcut_output_\(UUID().uuidString).txt")
+        arguments.append(contentsOf: ["--output-path", outputFileURL!.path])
+
+        defer {
+            // Clean up temp files
+            if let inputURL = inputFileURL {
+                try? FileManager.default.removeItem(at: inputURL)
+            }
+            if let outputURL = outputFileURL {
+                try? FileManager.default.removeItem(at: outputURL)
+            }
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: shortcutsPath)
+        process.arguments = arguments
+
+        let errorPipe = Pipe()
+        process.standardError = errorPipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            log.error("Failed to run shortcut '\(name, privacy: .public)': \(error.localizedDescription)")
+            throw NSError(
+                domain: "ShortcutsError",
+                code: 4,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to run shortcut '\(name)': \(error.localizedDescription)"
+                ]
+            )
+        }
+
+        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+
+        guard process.terminationStatus == 0 else {
+            let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown error"
+            log.error("Shortcut '\(name, privacy: .public)' failed: \(errorMessage)")
+            throw NSError(
+                domain: "ShortcutsError",
+                code: 5,
+                userInfo: [NSLocalizedDescriptionKey: "Shortcut '\(name)' failed: \(errorMessage)"]
+            )
+        }
+
+        // Read output if available
+        var output: String?
+        if let outputURL = outputFileURL,
+           FileManager.default.fileExists(atPath: outputURL.path) {
+            output = try? String(contentsOf: outputURL, encoding: .utf8)
+        }
+
+        log.info("Shortcut '\(name, privacy: .public)' completed successfully")
+
+        if let output = output, !output.isEmpty {
+            return .object([
+                "success": .bool(true),
+                "shortcut": .string(name),
+                "output": .string(output),
+            ])
+        } else {
+            return .object([
+                "success": .bool(true),
+                "shortcut": .string(name),
+            ])
+        }
+    }
+}
