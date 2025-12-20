@@ -67,6 +67,15 @@ final class ShortcutsService: Service {
 
     // MARK: - Private Implementation
 
+    private func runProcess(_ process: Process) async throws {
+        try process.run()
+        await withCheckedContinuation { continuation in
+            process.terminationHandler = { _ in
+                continuation.resume()
+            }
+        }
+    }
+
     private func listShortcuts() async throws -> Value {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: shortcutsPath)
@@ -78,8 +87,7 @@ final class ShortcutsService: Service {
         process.standardError = errorPipe
 
         do {
-            try process.run()
-            process.waitUntilExit()
+            try await runProcess(process)
         } catch {
             log.error("Failed to run shortcuts command: \(error.localizedDescription)")
             throw NSError(
@@ -121,31 +129,24 @@ final class ShortcutsService: Service {
     private func runShortcut(name: String, input: String?) async throws -> Value {
         log.info("Running shortcut: \(name, privacy: .public)")
 
-        var arguments = ["run", name]
-        var inputFileURL: URL?
-        var outputFileURL: URL?
+        let tempDir = FileManager.default.temporaryDirectory
+        let outputFileURL = tempDir.appendingPathComponent("shortcut_output_\(UUID().uuidString).txt")
 
-        // Handle input via temp file if provided
+        var arguments = ["run", name, "--output-path", outputFileURL.path]
+        var inputFileURL: URL?
+
         if let input = input {
-            let tempDir = FileManager.default.temporaryDirectory
-            inputFileURL = tempDir.appendingPathComponent("shortcut_input_\(UUID().uuidString).txt")
-            try input.write(to: inputFileURL!, atomically: true, encoding: .utf8)
-            arguments.append(contentsOf: ["--input-path", inputFileURL!.path])
+            let inputURL = tempDir.appendingPathComponent("shortcut_input_\(UUID().uuidString).txt")
+            try input.write(to: inputURL, atomically: true, encoding: .utf8)
+            arguments.append(contentsOf: ["--input-path", inputURL.path])
+            inputFileURL = inputURL
         }
 
-        // Set up output file
-        let tempDir = FileManager.default.temporaryDirectory
-        outputFileURL = tempDir.appendingPathComponent("shortcut_output_\(UUID().uuidString).txt")
-        arguments.append(contentsOf: ["--output-path", outputFileURL!.path])
-
         defer {
-            // Clean up temp files
             if let inputURL = inputFileURL {
                 try? FileManager.default.removeItem(at: inputURL)
             }
-            if let outputURL = outputFileURL {
-                try? FileManager.default.removeItem(at: outputURL)
-            }
+            try? FileManager.default.removeItem(at: outputFileURL)
         }
 
         let process = Process()
@@ -156,8 +157,7 @@ final class ShortcutsService: Service {
         process.standardError = errorPipe
 
         do {
-            try process.run()
-            process.waitUntilExit()
+            try await runProcess(process)
         } catch {
             log.error("Failed to run shortcut '\(name, privacy: .public)': \(error.localizedDescription)")
             throw NSError(
@@ -181,11 +181,9 @@ final class ShortcutsService: Service {
             )
         }
 
-        // Read output if available
         var output: String?
-        if let outputURL = outputFileURL,
-           FileManager.default.fileExists(atPath: outputURL.path) {
-            output = try? String(contentsOf: outputURL, encoding: .utf8)
+        if FileManager.default.fileExists(atPath: outputFileURL.path) {
+            output = try? String(contentsOf: outputFileURL, encoding: .utf8)
         }
 
         log.info("Shortcut '\(name, privacy: .public)' completed successfully")
