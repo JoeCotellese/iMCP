@@ -12,6 +12,7 @@ final class ShortcutsService: Service {
     static let shared = ShortcutsService()
 
     private let shortcutsPath = "/usr/bin/shortcuts"
+    private let executionTimeout: Duration = .seconds(300)
 
     var tools: [Tool] {
         Tool(
@@ -157,16 +158,33 @@ final class ShortcutsService: Service {
         process.standardError = errorPipe
 
         do {
-            try await runProcess(process)
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    try await self.runProcess(process)
+                }
+
+                group.addTask {
+                    try await Task.sleep(for: self.executionTimeout)
+                    process.terminate()
+                    throw NSError(
+                        domain: "ShortcutsError",
+                        code: 6,
+                        userInfo: [
+                            NSLocalizedDescriptionKey:
+                                "Shortcut '\(name)' timed out after 5 minutes"
+                        ]
+                    )
+                }
+
+                try await group.next()
+                group.cancelAll()
+            }
         } catch {
+            if process.isRunning {
+                process.terminate()
+            }
             log.error("Failed to run shortcut '\(name, privacy: .public)': \(error.localizedDescription)")
-            throw NSError(
-                domain: "ShortcutsError",
-                code: 4,
-                userInfo: [
-                    NSLocalizedDescriptionKey: "Failed to run shortcut '\(name)': \(error.localizedDescription)"
-                ]
-            )
+            throw error
         }
 
         let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
