@@ -13,7 +13,8 @@ import class Foundation.URLSession
 import struct Foundation.URLRequest
 import class Foundation.URLResponse
 import class Foundation.HTTPURLResponse
-import class Foundation.NSLock
+import class Foundation.FileManager
+import class Foundation.JSONDecoder
 
 var log = Logger(label: "me.mattt.iMCP.server") { StreamLogHandler.standardError(label: $0) }
 #if DEBUG
@@ -724,7 +725,9 @@ actor HTTPMCPService: Service {
         return false
     }
 
-    private func sendRequest(_ data: Data) async throws -> Data {
+    private func sendRequest(_ data: Data, approvalRetries: Int = 0) async throws -> Data {
+        let maxApprovalRetries = 30  // 30 retries * 2 seconds = 60 seconds max wait
+
         let url = serverURL.appendingPathComponent("mcp")
 
         var request = URLRequest(url: url)
@@ -744,10 +747,14 @@ actor HTTPMCPService: Service {
         case 200:
             return responseData
         case 202:
-            // Pending approval - wait and retry
-            await log.info("Connection pending approval, waiting...")
+            // Pending approval - wait and retry with limit
+            if approvalRetries >= maxApprovalRetries {
+                await log.error("Connection approval timed out after \(maxApprovalRetries * 2) seconds")
+                throw HTTPServiceError.approvalTimeout
+            }
+            await log.info("Connection pending approval, waiting... (\(approvalRetries + 1)/\(maxApprovalRetries))")
             try await Task.sleep(for: .seconds(2))
-            return try await sendRequest(data)
+            return try await sendRequest(data, approvalRetries: approvalRetries + 1)
         case 401:
             throw HTTPServiceError.unauthorized
         default:
@@ -765,112 +772,68 @@ enum HTTPServiceError: Swift.Error {
     case invalidResponse
     case unauthorized
     case serverError(Int)
+    case approvalTimeout
 }
 
-/// Combined service that discovers HTTP port via Bonjour, then uses HTTP transport
-actor CombinedMCPService: Service {
+/// Transport configuration from app
+struct TransportConfig: Codable {
+    let transport: String
+    let httpPort: Int?
+}
+
+/// Service that reads transport config from file and uses appropriate transport
+actor ConfigBasedMCPService: Service {
     private var httpService: HTTPMCPService?
-    private let bonjourService = MCPService()
-    private var activeService: (any Service)?
+    private var bonjourService: MCPService?
 
-    func run() async throws {
-        // First, do a quick Bonjour lookup to find the HTTP port from TXT record
-        let httpPort = await discoverHTTPPort()
-
-        if let port = httpPort {
-            await log.info("Discovered HTTP port \(port) from Bonjour TXT record")
-
-            // Try HTTP with discovered port
-            let service = HTTPMCPService(port: port)
-            self.httpService = service
-
-            do {
-                await log.info("Trying HTTP transport on port \(port)...")
-                activeService = service
-                try await service.run()
-                return
-            } catch HTTPServiceError.serverNotAvailable {
-                await log.info("HTTP on port \(port) not available, falling back to Bonjour connection...")
-            }
-        } else {
-            await log.info("No HTTP port in TXT record, trying default port 9847...")
-
-            // Try default port
-            let service = HTTPMCPService(port: 9847)
-            self.httpService = service
-
-            do {
-                activeService = service
-                try await service.run()
-                return
-            } catch HTTPServiceError.serverNotAvailable {
-                await log.info("HTTP on default port not available, falling back to Bonjour connection...")
-            }
-        }
-
-        // Fall back to full Bonjour connection
-        await log.info("Using Bonjour transport...")
-        activeService = bonjourService
-        try await bonjourService.run()
+    private static var configFile: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/iMCP/transport.json")
     }
 
-    /// Discover the HTTP port from Bonjour TXT record
-    private func discoverHTTPPort() async -> Int? {
-        await log.debug("Looking up HTTP port via Bonjour TXT record...")
+    func run() async throws {
+        // Read transport config from file
+        let config = try await readConfig()
 
-        let discoveryBrowser = NWBrowser(
-            for: .bonjour(type: serviceType, domain: nil),
-            using: parameters
-        )
+        let portInfo = config.httpPort.map { ", port \($0)" } ?? ""
+        await log.info("Transport config: \(config.transport)\(portInfo)")
 
-        return await withCheckedContinuation { continuation in
-            var hasResumed = false
-            let lock = NSLock()
+        switch config.transport {
+        case "http":
+            let port = config.httpPort ?? 9847
+            let service = HTTPMCPService(port: port)
+            self.httpService = service
+            await log.info("Using HTTP transport on port \(port)")
+            try await service.run()
 
-            let resumeOnce: (Int?) -> Void = { port in
-                lock.lock()
-                defer { lock.unlock() }
-                guard !hasResumed else { return }
-                hasResumed = true
-                discoveryBrowser.cancel()
-                continuation.resume(returning: port)
-            }
+        case "bonjour":
+            let service = MCPService()
+            self.bonjourService = service
+            await log.info("Using Bonjour transport")
+            try await service.run()
 
-            // Timeout after 2 seconds - just return nil and try default port
-            let timeoutTask = Task {
-                try await Task.sleep(for: .seconds(2))
-                resumeOnce(nil)
-            }
+        default:
+            await log.error("Unknown transport type: \(config.transport)")
+            throw ConfigError.unknownTransport(config.transport)
+        }
+    }
 
-            discoveryBrowser.browseResultsChangedHandler = { results, _ in
-                Task {
-                    // Look for iMCP service
-                    for result in results {
-                        if case .bonjour(let txtRecord) = result.metadata {
-                            // Read httpPort from TXT record
-                            if let portString = txtRecord["httpPort"],
-                               let port = Int(portString) {
-                                await log.debug("Found httpPort=\(port) in TXT record")
-                                timeoutTask.cancel()
-                                resumeOnce(port)
-                                return
-                            }
-                        }
-                    }
-                }
-            }
+    private func readConfig() async throws -> TransportConfig {
+        let configURL = Self.configFile
 
-            discoveryBrowser.stateUpdateHandler = { state in
-                if case .failed = state {
-                    Task {
-                        await log.debug("Bonjour discovery failed")
-                        timeoutTask.cancel()
-                        resumeOnce(nil)
-                    }
-                }
-            }
+        guard FileManager.default.fileExists(atPath: configURL.path) else {
+            await log.error("Transport config not found at \(configURL.path)")
+            await log.error("Make sure iMCP app is running")
+            throw ConfigError.configNotFound
+        }
 
-            discoveryBrowser.start(queue: .main)
+        do {
+            let data = try Data(contentsOf: configURL)
+            let config = try JSONDecoder().decode(TransportConfig.self, from: data)
+            return config
+        } catch {
+            await log.error("Failed to read transport config: \(error)")
+            throw ConfigError.invalidConfig(error)
         }
     }
 
@@ -878,14 +841,22 @@ actor CombinedMCPService: Service {
         if let service = httpService {
             try await service.shutdown()
         }
-        try await bonjourService.shutdown()
+        if let service = bonjourService {
+            try await service.shutdown()
+        }
     }
 }
 
-// Update the ServiceLifecycle initialization - use combined service
+enum ConfigError: Swift.Error {
+    case configNotFound
+    case invalidConfig(Swift.Error)
+    case unknownTransport(String)
+}
+
+// Use config-based service that reads transport setting from app
 let lifecycle = ServiceGroup(
     configuration: .init(
-        services: [CombinedMCPService()],
+        services: [ConfigBasedMCPService()],
         logger: log
     )
 )

@@ -26,11 +26,16 @@ actor MCPRequestHandler {
         var clientInfo: MCP.Client.Info?
         var isApproved: Bool
         var capabilities: MCP.Client.Capabilities?
+        var lastActivity: Date
     }
 
     private var sessions: [String: ClientSession] = [:]
     private var serviceBindings: [String: Bool] = [:]
     private var isEnabled: Bool = true
+    private var cleanupTask: Task<Void, Never>?
+
+    /// Session timeout in seconds (30 minutes of inactivity)
+    private let sessionTimeout: TimeInterval = 30 * 60
 
     /// Connection approval handler - called when a new client needs approval
     private var approvalHandler: ((String, MCP.Client.Info) async -> Bool)?
@@ -42,6 +47,33 @@ actor MCPRequestHandler {
     init() {
         self.serverName = Bundle.main.name ?? "iMCP"
         self.serverVersion = Bundle.main.shortVersionString ?? "unknown"
+
+        // Start session cleanup task
+        cleanupTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))  // Check every minute
+                await self?.cleanupStaleSessions()
+            }
+        }
+    }
+
+    deinit {
+        cleanupTask?.cancel()
+    }
+
+    /// Remove sessions that have been inactive for too long
+    private func cleanupStaleSessions() {
+        let now = Date()
+        let staleIDs = sessions.filter { now.timeIntervalSince($0.value.lastActivity) > sessionTimeout }.map { $0.key }
+
+        for clientID in staleIDs {
+            sessions.removeValue(forKey: clientID)
+            log.debug("Removed stale session for client: \(clientID)")
+        }
+
+        if !staleIDs.isEmpty {
+            log.info("Cleaned up \(staleIDs.count) stale session(s)")
+        }
     }
 
     /// Set the connection approval handler
@@ -70,6 +102,12 @@ actor MCPRequestHandler {
 
         let id = json["id"]
         let params = json["params"] as? [String: Any] ?? [:]
+
+        // Update session activity timestamp
+        if var session = sessions[clientID] {
+            session.lastActivity = Date()
+            sessions[clientID] = session
+        }
 
         log.debug("Handling method: \(method) for client: \(clientID)")
 
@@ -117,10 +155,12 @@ actor MCPRequestHandler {
             clientID: clientID,
             clientInfo: nil,
             isApproved: false,
-            capabilities: nil
+            capabilities: nil,
+            lastActivity: Date()
         )
 
         session.clientInfo = clientInfo
+        session.lastActivity = Date()
 
         if !session.isApproved {
             // Request approval

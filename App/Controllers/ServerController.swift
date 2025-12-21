@@ -196,6 +196,14 @@ final class ServerController: ObservableObject {
     private var httpServer: HTTPMCPServer?
     private var httpRequestHandler: MCPRequestHandler?
 
+    // MARK: - Transport Config File
+    private static let configDirectory = FileManager.default.urls(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask
+    ).first!.appendingPathComponent("iMCP")
+
+    private static let configFile = configDirectory.appendingPathComponent("transport.json")
+
     // MARK: - AppStorage for Transport Mode
     @AppStorage("useHTTPTransport") var useHTTPTransport = true  // Default to HTTP for new transport
 
@@ -311,6 +319,7 @@ final class ServerController: ObservableObject {
             } else {
                 // Start Bonjour transport
                 await self.networkManager.start()
+                self.writeTransportConfig(transport: "bonjour")
             }
 
             self.updateServerStatus("Running")
@@ -349,6 +358,34 @@ final class ServerController: ObservableObject {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Transport Config File Management
+
+    /// Write transport configuration to file for CLI to read
+    private func writeTransportConfig(transport: String, httpPort: Int? = nil) {
+        do {
+            // Create directory if needed
+            try FileManager.default.createDirectory(
+                at: Self.configDirectory,
+                withIntermediateDirectories: true
+            )
+
+            // Build config
+            var config: [String: Any] = ["transport": transport]
+            if let port = httpPort {
+                config["httpPort"] = port
+            }
+
+            // Write JSON
+            let data = try JSONSerialization.data(withJSONObject: config, options: .prettyPrinted)
+            try data.write(to: Self.configFile)
+
+            let portInfo = httpPort.map { ", port \($0)" } ?? ""
+            log.info("Wrote transport config: \(transport)\(portInfo)")
+        } catch {
+            log.error("Failed to write transport config: \(error)")
         }
     }
 
@@ -403,19 +440,19 @@ final class ServerController: ObservableObject {
         do {
             try await server.start()
 
-            // Get the bound port and advertise it via Bonjour TXT record
+            // Get the bound port and write config for CLI
             if let boundPort = await server.boundPort {
                 log.notice("HTTP transport started on port \(boundPort)")
-
-                // Start the Bonjour service to advertise the HTTP port
-                // This allows CLI to discover the port via TXT record
-                await networkManager.setHTTPPort(boundPort)
-                await networkManager.start()
+                writeTransportConfig(transport: "http", httpPort: boundPort)
             } else {
                 log.warning("HTTP server started but boundPort is nil")
+                writeTransportConfig(transport: "http", httpPort: 9847)  // Fallback to default
             }
         } catch {
             log.error("Failed to start HTTP transport: \(error)")
+            httpServer = nil
+            httpRequestHandler = nil
+            updateServerStatus("Failed: \(error.localizedDescription)")
         }
     }
 

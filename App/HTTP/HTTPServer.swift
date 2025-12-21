@@ -144,23 +144,25 @@ actor HTTPMCPServer {
                 logger: Logging.Logger(label: "me.mattt.iMCP.http")
             )
 
-            // Try to start the server and wait briefly to see if it fails
+            // Start the server in a task
             let startTask = Task {
                 try await app.runService()
             }
 
-            // Give the server a moment to bind or fail
-            try await Task.sleep(for: .milliseconds(100))
+            // Verify the server started by polling health endpoint
+            // Retry a few times to give the server time to bind
+            var serverReady = false
+            for attempt in 1...5 {
+                try await Task.sleep(for: .milliseconds(100))
 
-            // Check if the task is still running (successful bind) or cancelled/failed
-            if startTask.isCancelled {
-                log.warning("Server failed to bind on port \(port)")
-                lastError = HTTPServerError.portInUse(port)
-                continue
+                if await isPortListening(port: port) {
+                    serverReady = true
+                    break
+                }
+                log.debug("Health check attempt \(attempt) on port \(port) - not ready yet")
             }
 
-            // Test if the port is actually listening by making a quick health check
-            if await isPortListening(port: port) {
+            if serverReady {
                 // Success - record the port and keep the server running
                 self.boundPort = port
                 self.isRunning = true
@@ -168,9 +170,9 @@ actor HTTPMCPServer {
                 log.notice("HTTP MCP server started on http://127.0.0.1:\(port)")
                 return
             } else {
-                // Port didn't become available, cancel and try next
+                // Port didn't become available, cancel task and try next
                 startTask.cancel()
-                log.warning("Port \(port) did not become available, trying next")
+                log.warning("Port \(port) did not become available after 500ms, trying next")
                 lastError = HTTPServerError.portInUse(port)
             }
         }
@@ -184,7 +186,7 @@ actor HTTPMCPServer {
     private func isPortListening(port: Int) async -> Bool {
         guard let url = URL(string: "http://127.0.0.1:\(port)/health") else { return false }
         var request = URLRequest(url: url)
-        request.timeoutInterval = 1
+        request.timeoutInterval = 0.5
 
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
@@ -192,7 +194,7 @@ actor HTTPMCPServer {
                 return httpResponse.statusCode == 200
             }
         } catch {
-            log.debug("Health check on port \(port) failed: \(error)")
+            // Expected to fail if port not yet listening
         }
         return false
     }
