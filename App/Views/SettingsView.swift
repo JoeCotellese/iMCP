@@ -59,7 +59,9 @@ struct SettingsView: View {
 
 struct GeneralSettingsView: View {
     @ObservedObject var serverController: ServerController
+    @AppStorage("useHTTPTransport") private var useHTTPTransport = true
     @State private var showingResetAlert = false
+    @State private var showingRestartAlert = false
     @State private var selectedClients = Set<String>()
 
     private var trustedClients: [String] {
@@ -68,6 +70,40 @@ struct GeneralSettingsView: View {
 
     var body: some View {
         Form {
+            Section {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("Transport")
+                            .font(.headline)
+                        Spacer()
+                    }
+
+                    Text("Choose how clients connect to the server.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.bottom, 4)
+
+                Picker("Protocol", selection: $useHTTPTransport) {
+                    Text("HTTP").tag(true)
+                    Text("Bonjour").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: useHTTPTransport) { _, _ in
+                    showingRestartAlert = true
+                }
+
+                if useHTTPTransport {
+                    Text("HTTP transport on localhost. Recommended for stability.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Bonjour uses network discovery. May have connection issues.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
@@ -131,6 +167,11 @@ struct GeneralSettingsView: View {
             Text(
                 "This will remove all trusted clients. They will need to be approved again when connecting."
             )
+        }
+        .alert("Restart Required", isPresented: $showingRestartAlert) {
+            Button("OK") {}
+        } message: {
+            Text("Restart the app for the transport change to take effect.")
         }
     }
 }
