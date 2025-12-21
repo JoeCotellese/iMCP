@@ -6,6 +6,15 @@ import SystemPackage
 
 import struct Foundation.Data
 import class Foundation.RunLoop
+import class Foundation.FileHandle
+import struct Foundation.URL
+import struct Foundation.UUID
+import class Foundation.URLSession
+import struct Foundation.URLRequest
+import class Foundation.URLResponse
+import class Foundation.HTTPURLResponse
+import class Foundation.FileManager
+import class Foundation.JSONDecoder
 
 var log = Logger(label: "me.mattt.iMCP.server") { StreamLogHandler.standardError(label: $0) }
 #if DEBUG
@@ -636,10 +645,218 @@ actor MCPService: Service {
     }
 }
 
-// Update the ServiceLifecycle initialization
+// MARK: - HTTP Transport Service
+
+/// HTTP-based MCP service - discovers port via Bonjour TXT record
+actor HTTPMCPService: Service {
+    private var serverURL: URL
+    private let clientID = UUID().uuidString
+    private var isRunning = true
+
+    init(port: Int = 9847) {
+        self.serverURL = URL(string: "http://127.0.0.1:\(port)")!
+    }
+
+    func run() async throws {
+        await log.info("Starting HTTP MCP client connecting to \(serverURL)")
+
+        // Check if HTTP server is available
+        guard await isHTTPServerAvailable() else {
+            await log.info("HTTP server not available, falling back to Bonjour")
+            throw HTTPServiceError.serverNotAvailable
+        }
+
+        await log.info("HTTP server available, using HTTP transport")
+
+        // Main loop: read from stdin, send to server, write response to stdout
+        let stdin = FileHandle.standardInput
+        let stdout = FileHandle.standardOutput
+
+        var buffer = Data()
+
+        while isRunning {
+            let data = stdin.availableData
+
+            if data.isEmpty {
+                await log.info("EOF on stdin, exiting")
+                break
+            }
+
+            buffer.append(data)
+
+            // Process complete JSON-RPC messages (newline-delimited)
+            while let newlineIndex = buffer.firstIndex(of: UInt8(ascii: "\n")) {
+                let messageData = buffer[..<newlineIndex]
+                buffer = Data(buffer[(newlineIndex + 1)...])
+
+                guard !messageData.isEmpty else { continue }
+
+                do {
+                    let response = try await sendRequest(Data(messageData))
+                    var outputData = response
+                    outputData.append(UInt8(ascii: "\n"))
+                    stdout.write(outputData)
+                } catch {
+                    await log.error("HTTP request failed: \(error)")
+                    // Write error response to stdout
+                    let errorResponse = #"{"jsonrpc":"2.0","error":{"code":-32603,"message":"HTTP error"},"id":null}"#
+                    if var outputData = errorResponse.data(using: .utf8) {
+                        outputData.append(UInt8(ascii: "\n"))
+                        stdout.write(outputData)
+                    }
+                }
+            }
+        }
+    }
+
+    private func isHTTPServerAvailable() async -> Bool {
+        let url = serverURL.appendingPathComponent("health")
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 2
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse {
+                return httpResponse.statusCode == 200
+            }
+        } catch {
+            await log.debug("HTTP health check failed: \(error)")
+        }
+        return false
+    }
+
+    private func sendRequest(_ data: Data, approvalRetries: Int = 0) async throws -> Data {
+        let maxApprovalRetries = 30  // 30 retries * 2 seconds = 60 seconds max wait
+
+        let url = serverURL.appendingPathComponent("mcp")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(clientID, forHTTPHeaderField: "X-MCP-Client-ID")
+        request.httpBody = data
+        request.timeoutInterval = 300  // 5 minutes for long-running tools
+
+        let (responseData, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw HTTPServiceError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            return responseData
+        case 202:
+            // Pending approval - wait and retry with limit
+            if approvalRetries >= maxApprovalRetries {
+                await log.error("Connection approval timed out after \(maxApprovalRetries * 2) seconds")
+                throw HTTPServiceError.approvalTimeout
+            }
+            await log.info("Connection pending approval, waiting... (\(approvalRetries + 1)/\(maxApprovalRetries))")
+            try await Task.sleep(for: .seconds(2))
+            return try await sendRequest(data, approvalRetries: approvalRetries + 1)
+        case 401:
+            throw HTTPServiceError.unauthorized
+        default:
+            throw HTTPServiceError.serverError(httpResponse.statusCode)
+        }
+    }
+
+    func shutdown() async throws {
+        isRunning = false
+    }
+}
+
+enum HTTPServiceError: Swift.Error {
+    case serverNotAvailable
+    case invalidResponse
+    case unauthorized
+    case serverError(Int)
+    case approvalTimeout
+}
+
+/// Transport configuration from app
+struct TransportConfig: Codable {
+    let transport: String
+    let httpPort: Int?
+}
+
+/// Service that reads transport config from file and uses appropriate transport
+actor ConfigBasedMCPService: Service {
+    private var httpService: HTTPMCPService?
+    private var bonjourService: MCPService?
+
+    private static var configFile: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/iMCP/transport.json")
+    }
+
+    func run() async throws {
+        // Read transport config from file
+        let config = try await readConfig()
+
+        let portInfo = config.httpPort.map { ", port \($0)" } ?? ""
+        await log.info("Transport config: \(config.transport)\(portInfo)")
+
+        switch config.transport {
+        case "http":
+            let port = config.httpPort ?? 9847
+            let service = HTTPMCPService(port: port)
+            self.httpService = service
+            await log.info("Using HTTP transport on port \(port)")
+            try await service.run()
+
+        case "bonjour":
+            let service = MCPService()
+            self.bonjourService = service
+            await log.info("Using Bonjour transport")
+            try await service.run()
+
+        default:
+            await log.error("Unknown transport type: \(config.transport)")
+            throw ConfigError.unknownTransport(config.transport)
+        }
+    }
+
+    private func readConfig() async throws -> TransportConfig {
+        let configURL = Self.configFile
+
+        guard FileManager.default.fileExists(atPath: configURL.path) else {
+            await log.error("Transport config not found at \(configURL.path)")
+            await log.error("Make sure iMCP app is running")
+            throw ConfigError.configNotFound
+        }
+
+        do {
+            let data = try Data(contentsOf: configURL)
+            let config = try JSONDecoder().decode(TransportConfig.self, from: data)
+            return config
+        } catch {
+            await log.error("Failed to read transport config: \(error)")
+            throw ConfigError.invalidConfig(error)
+        }
+    }
+
+    func shutdown() async throws {
+        if let service = httpService {
+            try await service.shutdown()
+        }
+        if let service = bonjourService {
+            try await service.shutdown()
+        }
+    }
+}
+
+enum ConfigError: Swift.Error {
+    case configNotFound
+    case invalidConfig(Swift.Error)
+    case unknownTransport(String)
+}
+
+// Use config-based service that reads transport setting from app
 let lifecycle = ServiceGroup(
     configuration: .init(
-        services: [MCPService()],
+        services: [ConfigBasedMCPService()],
         logger: log
     )
 )

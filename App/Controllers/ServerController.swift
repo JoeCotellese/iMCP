@@ -192,6 +192,21 @@ final class ServerController: ObservableObject {
 
     private let networkManager = ServerNetworkManager()
 
+    // MARK: - HTTP Transport
+    private var httpServer: HTTPMCPServer?
+    private var httpRequestHandler: MCPRequestHandler?
+
+    // MARK: - Transport Config File
+    private static let configDirectory = FileManager.default.urls(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask
+    ).first!.appendingPathComponent("iMCP")
+
+    private static let configFile = configDirectory.appendingPathComponent("transport.json")
+
+    // MARK: - AppStorage for Transport Mode
+    @AppStorage("useHTTPTransport") var useHTTPTransport = true  // Default to HTTP for new transport
+
     // MARK: - AppStorage for Service Enablement States
     @AppStorage("calendarEnabled") private var calendarEnabled = false
     @AppStorage("captureEnabled") private var captureEnabled = false
@@ -297,7 +312,16 @@ final class ServerController: ObservableObject {
         Task {
             // Set initial bindings before starting the server, using own @AppStorage values
             await networkManager.updateServiceBindings(self.currentServiceBindings)
-            await self.networkManager.start()
+
+            if self.useHTTPTransport {
+                // Start HTTP transport
+                await self.startHTTPTransport()
+            } else {
+                // Start Bonjour transport
+                await self.networkManager.start()
+                self.writeTransportConfig(transport: "bonjour")
+            }
+
             self.updateServerStatus("Running")
 
             await networkManager.setConnectionApprovalHandler {
@@ -337,24 +361,157 @@ final class ServerController: ObservableObject {
         }
     }
 
+    // MARK: - Transport Config File Management
+
+    /// Write transport configuration to file for CLI to read
+    private func writeTransportConfig(transport: String, httpPort: Int? = nil) {
+        do {
+            // Create directory if needed
+            try FileManager.default.createDirectory(
+                at: Self.configDirectory,
+                withIntermediateDirectories: true
+            )
+
+            // Build config
+            var config: [String: Any] = ["transport": transport]
+            if let port = httpPort {
+                config["httpPort"] = port
+            }
+
+            // Write JSON
+            let data = try JSONSerialization.data(withJSONObject: config, options: .prettyPrinted)
+            try data.write(to: Self.configFile)
+
+            let portInfo = httpPort.map { ", port \($0)" } ?? ""
+            log.info("Wrote transport config: \(transport)\(portInfo)")
+        } catch {
+            log.error("Failed to write transport config: \(error)")
+        }
+    }
+
+    // MARK: - HTTP Transport Management
+
+    private func startHTTPTransport() async {
+        log.info("Starting HTTP transport")
+
+        // Create request handler
+        let handler = MCPRequestHandler()
+        self.httpRequestHandler = handler
+
+        // Set up approval handler for HTTP clients
+        await handler.setApprovalHandler { [weak self] clientID, clientInfo in
+            guard let self = self else { return false }
+
+            log.debug("HTTP: Approval handler called for client \(clientInfo.name)")
+
+            return await withCheckedContinuation { continuation in
+                let lock = NSLock()
+                var hasResumed = false
+
+                let resumeOnce = { (value: Bool) in
+                    lock.lock()
+                    defer { lock.unlock() }
+                    guard !hasResumed else { return }
+                    hasResumed = true
+                    continuation.resume(returning: value)
+                }
+
+                Task { @MainActor in
+                    self.showConnectionApprovalAlert(
+                        clientID: clientInfo.name,
+                        approve: {
+                            resumeOnce(true)
+                        },
+                        deny: {
+                            resumeOnce(false)
+                        }
+                    )
+                }
+            }
+        }
+
+        // Update service bindings for HTTP handler
+        await handler.updateServiceBindings(self.currentServiceBindingsAsBool)
+
+        // Create and start HTTP server
+        let server = HTTPMCPServer(requestHandler: handler)
+        self.httpServer = server
+
+        do {
+            try await server.start()
+
+            // Get the bound port and write config for CLI
+            if let boundPort = await server.boundPort {
+                log.notice("HTTP transport started on port \(boundPort)")
+                writeTransportConfig(transport: "http", httpPort: boundPort)
+            } else {
+                log.warning("HTTP server started but boundPort is nil")
+                writeTransportConfig(transport: "http", httpPort: 9847)  // Fallback to default
+            }
+        } catch {
+            log.error("Failed to start HTTP transport: \(error)")
+            httpServer = nil
+            httpRequestHandler = nil
+            updateServerStatus("Failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func stopHTTPTransport() async {
+        if let server = httpServer {
+            await server.stop()
+            httpServer = nil
+            httpRequestHandler = nil
+            log.notice("HTTP transport stopped")
+        }
+    }
+
+    /// Service bindings as Bool dictionary for HTTP handler
+    private var currentServiceBindingsAsBool: [String: Bool] {
+        Dictionary(
+            uniqueKeysWithValues: computedServiceConfigs.map {
+                ($0.id, $0.binding.wrappedValue)
+            }
+        )
+    }
+
     func updateServiceBindings(_ bindings: [String: Binding<Bool>]) async {
         // This function is still called by ContentView's onChange when user toggles services.
         // It ensures ServerNetworkManager is updated and clients are notified.
         await networkManager.updateServiceBindings(bindings)
+
+        // Also update HTTP handler if active
+        if let handler = httpRequestHandler {
+            let boolBindings = Dictionary(uniqueKeysWithValues: bindings.map { ($0.key, $0.value.wrappedValue) })
+            await handler.updateServiceBindings(boolBindings)
+        }
     }
 
     func startServer() async {
-        await networkManager.start()
+        if useHTTPTransport {
+            await startHTTPTransport()
+        } else {
+            await networkManager.start()
+        }
         updateServerStatus("Running")
     }
 
     func stopServer() async {
-        await networkManager.stop()
+        if useHTTPTransport {
+            await stopHTTPTransport()
+        } else {
+            await networkManager.stop()
+        }
         updateServerStatus("Stopped")
     }
 
     func setEnabled(_ enabled: Bool) async {
         await networkManager.setEnabled(enabled)
+
+        // Also update HTTP handler if active
+        if let handler = httpRequestHandler {
+            await handler.setEnabled(enabled)
+        }
+
         updateServerStatus(enabled ? "Running" : "Disabled")
     }
 
@@ -577,6 +734,7 @@ actor NetworkDiscoveryManager {
     private let serviceDomain: String
     var listener: NWListener
     private let browser: NWBrowser
+    private var httpPort: Int?
 
     init(serviceType: String, serviceDomain: String) throws {
         self.serviceType = serviceType
@@ -604,6 +762,25 @@ actor NetworkDiscoveryManager {
         )
 
         log.info("Network discovery manager initialized with Bonjour service type: \(serviceType)")
+    }
+
+    /// Update the Bonjour TXT record to include the HTTP port
+    func setHTTPPort(_ port: Int) {
+        self.httpPort = port
+        updateServiceWithTXTRecord()
+    }
+
+    private func updateServiceWithTXTRecord() {
+        var txtRecord = NWTXTRecord()
+        if let port = httpPort {
+            txtRecord["httpPort"] = "\(port)"
+            log.info("Updated Bonjour TXT record with httpPort=\(port)")
+        }
+        listener.service = NWListener.Service(
+            type: serviceType,
+            domain: serviceDomain,
+            txtRecord: txtRecord
+        )
     }
 
     func start(
@@ -695,6 +872,11 @@ actor ServerNetworkManager {
 
     func isRunning() -> Bool {
         isRunningState
+    }
+
+    /// Set the HTTP port to advertise via Bonjour TXT record
+    func setHTTPPort(_ port: Int) async {
+        await discoveryManager?.setHTTPPort(port)
     }
 
     func setConnectionApprovalHandler(_ handler: @escaping ConnectionApprovalHandler) {
