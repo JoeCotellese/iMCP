@@ -786,9 +786,26 @@ actor ConfigBasedMCPService: Service {
     private var httpService: HTTPMCPService?
     private var bonjourService: MCPService?
 
-    private static var configFile: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/iMCP/transport.json")
+    /// Possible config file locations, checked in order.
+    /// Non-sandboxed path is checked first, then sandboxed container path.
+    private static var configFilePaths: [URL] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return [
+            // Non-sandboxed path (if app runs without sandbox)
+            home.appendingPathComponent("Library/Application Support/iMCP/transport.json"),
+            // Sandboxed container path (default for App Store / sandboxed builds)
+            home.appendingPathComponent("Library/Containers/com.appjawn.iMCP/Data/Library/Application Support/iMCP/transport.json")
+        ]
+    }
+
+    /// Finds the first existing config file from possible paths.
+    private static func findConfigFile() -> URL? {
+        for path in configFilePaths {
+            if FileManager.default.fileExists(atPath: path.path) {
+                return path
+            }
+        }
+        return nil
     }
 
     func run() async throws {
@@ -819,13 +836,17 @@ actor ConfigBasedMCPService: Service {
     }
 
     private func readConfig() async throws -> TransportConfig {
-        let configURL = Self.configFile
-
-        guard FileManager.default.fileExists(atPath: configURL.path) else {
-            await log.error("Transport config not found at \(configURL.path)")
+        guard let configURL = Self.findConfigFile() else {
+            await log.error("Transport config not found")
+            await log.error("Checked paths:")
+            for path in Self.configFilePaths {
+                await log.error("  - \(path.path)")
+            }
             await log.error("Make sure iMCP app is running")
             throw ConfigError.configNotFound
         }
+
+        await log.debug("Found transport config at \(configURL.path)")
 
         do {
             let data = try Data(contentsOf: configURL)
