@@ -14,8 +14,10 @@ private let weatherTimeout: Duration = .seconds(30)
 
 /// Error thrown when a WeatherKit operation exceeds the timeout.
 struct WeatherTimeoutError: Error, LocalizedError {
+    let operation: String
+
     var errorDescription: String? {
-        "Weather request timed out. WeatherKit may be unavailable or experiencing authentication issues."
+        "Weather request '\(operation)' timed out after 30 seconds. WeatherKit may be unavailable or experiencing authentication issues."
     }
 }
 
@@ -26,6 +28,7 @@ final class WeatherService: Service {
 
     /// Executes a WeatherKit operation with timeout protection.
     private func withTimeout<T: Sendable>(
+        _ operationName: String,
         _ operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
         try await withThrowingTaskGroup(of: T.self) { group in
@@ -34,11 +37,11 @@ final class WeatherService: Service {
             }
             group.addTask {
                 try await Task.sleep(for: weatherTimeout)
-                throw WeatherTimeoutError()
+                throw WeatherTimeoutError(operation: operationName)
             }
 
             guard let result = try await group.next() else {
-                throw WeatherTimeoutError()
+                throw WeatherTimeoutError(operation: operationName)
             }
             group.cancelAll()
             return result
@@ -76,7 +79,7 @@ final class WeatherService: Service {
 
             let location = CLLocation(latitude: latitude, longitude: longitude)
             log.info("Fetching current weather for \(latitude), \(longitude)")
-            let currentWeather = try await self.withTimeout {
+            let currentWeather = try await self.withTimeout("current weather") {
                 try await self.weatherService.weather(for: location, including: .current)
             }
 
@@ -126,7 +129,7 @@ final class WeatherService: Service {
 
             let location = CLLocation(latitude: latitude, longitude: longitude)
             log.info("Fetching daily forecast for \(latitude), \(longitude)")
-            let dailyForecast = try await self.withTimeout {
+            let dailyForecast = try await self.withTimeout("daily forecast") {
                 try await self.weatherService.weather(for: location, including: .daily)
             }
 
@@ -178,7 +181,7 @@ final class WeatherService: Service {
 
             let location = CLLocation(latitude: latitude, longitude: longitude)
             log.info("Fetching hourly forecast for \(latitude), \(longitude)")
-            let hourlyForecasts = try await self.withTimeout {
+            let hourlyForecasts = try await self.withTimeout("hourly forecast") {
                 try await self.weatherService.weather(for: location, including: .hourly)
             }
 
@@ -229,9 +232,10 @@ final class WeatherService: Service {
             let location = CLLocation(latitude: latitude, longitude: longitude)
             log.info("Fetching minute-by-minute forecast for \(latitude), \(longitude)")
             guard
-                let minuteByMinuteForecast = try await self.withTimeout({
-                    try await self.weatherService.weather(for: location, including: .minute)
-                })
+                let minuteByMinuteForecast = try await self.withTimeout(
+                    "minute-by-minute forecast",
+                    { try await self.weatherService.weather(for: location, including: .minute) }
+                )
             else {
                 throw NSError(
                     domain: "WeatherServiceError", code: 2,
