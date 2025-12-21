@@ -402,7 +402,18 @@ final class ServerController: ObservableObject {
 
         do {
             try await server.start()
-            log.notice("HTTP transport started on port \(mcpHTTPPort)")
+
+            // Get the bound port and advertise it via Bonjour TXT record
+            if let boundPort = await server.boundPort {
+                log.notice("HTTP transport started on port \(boundPort)")
+
+                // Start the Bonjour service to advertise the HTTP port
+                // This allows CLI to discover the port via TXT record
+                await networkManager.setHTTPPort(boundPort)
+                await networkManager.start()
+            } else {
+                log.warning("HTTP server started but boundPort is nil")
+            }
         } catch {
             log.error("Failed to start HTTP transport: \(error)")
         }
@@ -686,6 +697,7 @@ actor NetworkDiscoveryManager {
     private let serviceDomain: String
     var listener: NWListener
     private let browser: NWBrowser
+    private var httpPort: Int?
 
     init(serviceType: String, serviceDomain: String) throws {
         self.serviceType = serviceType
@@ -713,6 +725,25 @@ actor NetworkDiscoveryManager {
         )
 
         log.info("Network discovery manager initialized with Bonjour service type: \(serviceType)")
+    }
+
+    /// Update the Bonjour TXT record to include the HTTP port
+    func setHTTPPort(_ port: Int) {
+        self.httpPort = port
+        updateServiceWithTXTRecord()
+    }
+
+    private func updateServiceWithTXTRecord() {
+        var txtRecord = NWTXTRecord()
+        if let port = httpPort {
+            txtRecord["httpPort"] = "\(port)"
+            log.info("Updated Bonjour TXT record with httpPort=\(port)")
+        }
+        listener.service = NWListener.Service(
+            type: serviceType,
+            domain: serviceDomain,
+            txtRecord: txtRecord
+        )
     }
 
     func start(
@@ -804,6 +835,11 @@ actor ServerNetworkManager {
 
     func isRunning() -> Bool {
         isRunningState
+    }
+
+    /// Set the HTTP port to advertise via Bonjour TXT record
+    func setHTTPPort(_ port: Int) async {
+        await discoveryManager?.setHTTPPort(port)
     }
 
     func setConnectionApprovalHandler(_ handler: @escaping ConnectionApprovalHandler) {

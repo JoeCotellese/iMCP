@@ -13,6 +13,7 @@ import class Foundation.URLSession
 import struct Foundation.URLRequest
 import class Foundation.URLResponse
 import class Foundation.HTTPURLResponse
+import class Foundation.NSLock
 
 var log = Logger(label: "me.mattt.iMCP.server") { StreamLogHandler.standardError(label: $0) }
 #if DEBUG
@@ -645,11 +646,15 @@ actor MCPService: Service {
 
 // MARK: - HTTP Transport Service
 
-/// HTTP-based MCP service - simpler than Bonjour, tries localhost:9847
+/// HTTP-based MCP service - discovers port via Bonjour TXT record
 actor HTTPMCPService: Service {
-    private let serverURL = URL(string: "http://127.0.0.1:9847")!
+    private var serverURL: URL
     private let clientID = UUID().uuidString
     private var isRunning = true
+
+    init(port: Int = 9847) {
+        self.serverURL = URL(string: "http://127.0.0.1:\(port)")!
+    }
 
     func run() async throws {
         await log.info("Starting HTTP MCP client connecting to \(serverURL)")
@@ -762,31 +767,118 @@ enum HTTPServiceError: Swift.Error {
     case serverError(Int)
 }
 
-/// Combined service that tries HTTP first, falls back to Bonjour
+/// Combined service that discovers HTTP port via Bonjour, then uses HTTP transport
 actor CombinedMCPService: Service {
-    private let httpService = HTTPMCPService()
+    private var httpService: HTTPMCPService?
     private let bonjourService = MCPService()
     private var activeService: (any Service)?
 
     func run() async throws {
-        // Try HTTP first
-        do {
-            await log.info("Trying HTTP transport...")
-            activeService = httpService
-            try await httpService.run()
-        } catch HTTPServiceError.serverNotAvailable {
-            // Fall back to Bonjour
-            await log.info("HTTP not available, using Bonjour transport...")
-            activeService = bonjourService
-            try await bonjourService.run()
+        // First, do a quick Bonjour lookup to find the HTTP port from TXT record
+        let httpPort = await discoverHTTPPort()
+
+        if let port = httpPort {
+            await log.info("Discovered HTTP port \(port) from Bonjour TXT record")
+
+            // Try HTTP with discovered port
+            let service = HTTPMCPService(port: port)
+            self.httpService = service
+
+            do {
+                await log.info("Trying HTTP transport on port \(port)...")
+                activeService = service
+                try await service.run()
+                return
+            } catch HTTPServiceError.serverNotAvailable {
+                await log.info("HTTP on port \(port) not available, falling back to Bonjour connection...")
+            }
+        } else {
+            await log.info("No HTTP port in TXT record, trying default port 9847...")
+
+            // Try default port
+            let service = HTTPMCPService(port: 9847)
+            self.httpService = service
+
+            do {
+                activeService = service
+                try await service.run()
+                return
+            } catch HTTPServiceError.serverNotAvailable {
+                await log.info("HTTP on default port not available, falling back to Bonjour connection...")
+            }
+        }
+
+        // Fall back to full Bonjour connection
+        await log.info("Using Bonjour transport...")
+        activeService = bonjourService
+        try await bonjourService.run()
+    }
+
+    /// Discover the HTTP port from Bonjour TXT record
+    private func discoverHTTPPort() async -> Int? {
+        await log.debug("Looking up HTTP port via Bonjour TXT record...")
+
+        let discoveryBrowser = NWBrowser(
+            for: .bonjour(type: serviceType, domain: nil),
+            using: parameters
+        )
+
+        return await withCheckedContinuation { continuation in
+            var hasResumed = false
+            let lock = NSLock()
+
+            let resumeOnce: (Int?) -> Void = { port in
+                lock.lock()
+                defer { lock.unlock() }
+                guard !hasResumed else { return }
+                hasResumed = true
+                discoveryBrowser.cancel()
+                continuation.resume(returning: port)
+            }
+
+            // Timeout after 2 seconds - just return nil and try default port
+            let timeoutTask = Task {
+                try await Task.sleep(for: .seconds(2))
+                resumeOnce(nil)
+            }
+
+            discoveryBrowser.browseResultsChangedHandler = { results, _ in
+                Task {
+                    // Look for iMCP service
+                    for result in results {
+                        if case .bonjour(let txtRecord) = result.metadata {
+                            // Read httpPort from TXT record
+                            if let portString = txtRecord["httpPort"],
+                               let port = Int(portString) {
+                                await log.debug("Found httpPort=\(port) in TXT record")
+                                timeoutTask.cancel()
+                                resumeOnce(port)
+                                return
+                            }
+                        }
+                    }
+                }
+            }
+
+            discoveryBrowser.stateUpdateHandler = { state in
+                if case .failed = state {
+                    Task {
+                        await log.debug("Bonjour discovery failed")
+                        timeoutTask.cancel()
+                        resumeOnce(nil)
+                    }
+                }
+            }
+
+            discoveryBrowser.start(queue: .main)
         }
     }
 
     func shutdown() async throws {
-        if let service = activeService {
-            try await (service as? HTTPMCPService)?.shutdown()
-            try await (service as? MCPService)?.shutdown()
+        if let service = httpService {
+            try await service.shutdown()
         }
+        try await bonjourService.shutdown()
     }
 }
 

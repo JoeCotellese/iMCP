@@ -1,5 +1,5 @@
 // ABOUTME: Hummingbird HTTP server actor for MCP JSON-RPC transport.
-// ABOUTME: Listens on localhost:9847, handles POST requests, and SSE for notifications.
+// ABOUTME: Tries ports starting at 9847 until one binds. Exposes boundPort for TXT record.
 
 import Foundation
 import Hummingbird
@@ -9,8 +9,10 @@ import OSLog
 
 private let log = Logger.server
 
-/// Port for the HTTP server
-let mcpHTTPPort = 9847
+/// Default starting port for the HTTP server
+private let defaultStartPort = 9847
+/// Maximum number of ports to try before giving up
+private let maxPortAttempts = 10
 
 /// HTTP server actor that handles MCP JSON-RPC requests over HTTP
 actor HTTPMCPServer {
@@ -18,6 +20,9 @@ actor HTTPMCPServer {
     private let requestHandler: MCPRequestHandler
     private var sseConnections: [UUID: SSEConnection] = [:]
     private var isRunning = false
+
+    /// The port the server successfully bound to (nil if not yet started)
+    private(set) var boundPort: Int?
 
     /// Represents an active SSE connection for notifications
     struct SSEConnection: Sendable {
@@ -29,16 +34,12 @@ actor HTTPMCPServer {
         self.requestHandler = requestHandler
     }
 
-    /// Start the HTTP server
+    /// Start the HTTP server, trying successive ports if needed
     func start() async throws {
         guard !isRunning else {
             log.warning("HTTP server already running")
             return
         }
-
-        log.info("Starting HTTP MCP server on localhost:\(mcpHTTPPort)")
-
-        isRunning = true
 
         // Capture self for use in closures
         let handler = self.requestHandler
@@ -128,22 +129,72 @@ actor HTTPMCPServer {
             }
         }
 
-        // Create application
-        let app = Application(
-            router: router,
-            configuration: .init(
-                address: .hostname("127.0.0.1", port: mcpHTTPPort),
-                serverName: "iMCP"
-            ),
-            logger: Logging.Logger(label: "me.mattt.iMCP.http")
-        )
+        // Try successive ports until one binds successfully
+        var lastError: Swift.Error?
+        for portOffset in 0..<maxPortAttempts {
+            let port = defaultStartPort + portOffset
+            log.info("Attempting to start HTTP MCP server on localhost:\(port)")
 
-        // Run the server in a task
-        serverTask = Task {
-            try await app.runService()
+            let app = Application(
+                router: router,
+                configuration: .init(
+                    address: .hostname("127.0.0.1", port: port),
+                    serverName: "iMCP"
+                ),
+                logger: Logging.Logger(label: "me.mattt.iMCP.http")
+            )
+
+            // Try to start the server and wait briefly to see if it fails
+            let startTask = Task {
+                try await app.runService()
+            }
+
+            // Give the server a moment to bind or fail
+            try await Task.sleep(for: .milliseconds(100))
+
+            // Check if the task is still running (successful bind) or cancelled/failed
+            if startTask.isCancelled {
+                log.warning("Server failed to bind on port \(port)")
+                lastError = HTTPServerError.portInUse(port)
+                continue
+            }
+
+            // Test if the port is actually listening by making a quick health check
+            if await isPortListening(port: port) {
+                // Success - record the port and keep the server running
+                self.boundPort = port
+                self.isRunning = true
+                self.serverTask = startTask
+                log.notice("HTTP MCP server started on http://127.0.0.1:\(port)")
+                return
+            } else {
+                // Port didn't become available, cancel and try next
+                startTask.cancel()
+                log.warning("Port \(port) did not become available, trying next")
+                lastError = HTTPServerError.portInUse(port)
+            }
         }
 
-        log.notice("HTTP MCP server started on http://127.0.0.1:\(mcpHTTPPort)")
+        // All ports failed
+        log.error("Failed to bind HTTP server after trying \(maxPortAttempts) ports")
+        throw lastError ?? HTTPServerError.allPortsInUse
+    }
+
+    /// Check if a port is listening by attempting a quick connection
+    private func isPortListening(port: Int) async -> Bool {
+        guard let url = URL(string: "http://127.0.0.1:\(port)/health") else { return false }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 1
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse {
+                return httpResponse.statusCode == 200
+            }
+        } catch {
+            log.debug("Health check on port \(port) failed: \(error)")
+        }
+        return false
     }
 
     /// Stop the HTTP server
@@ -184,4 +235,10 @@ actor HTTPMCPServer {
     func getIsRunning() -> Bool {
         return isRunning
     }
+}
+
+/// Errors that can occur when starting the HTTP server
+enum HTTPServerError: Swift.Error {
+    case portInUse(Int)
+    case allPortsInUse
 }
