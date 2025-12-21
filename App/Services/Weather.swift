@@ -1,3 +1,6 @@
+// ABOUTME: WeatherKit MCP service providing current conditions and forecasts.
+// ABOUTME: Wraps Apple WeatherKit with timeout protection for reliability.
+
 import CoreLocation
 import Foundation
 import OSLog
@@ -6,10 +9,39 @@ import WeatherKit
 
 private let log = Logger.service("weather")
 
+/// Timeout duration for WeatherKit API calls (30 seconds).
+private let weatherTimeout: Duration = .seconds(30)
+
+/// Error thrown when a WeatherKit operation exceeds the timeout.
+struct WeatherTimeoutError: Error, LocalizedError {
+    var errorDescription: String? {
+        "Weather request timed out. WeatherKit may be unavailable or experiencing authentication issues."
+    }
+}
+
 final class WeatherService: Service {
     static let shared = WeatherService()
 
     private let weatherService = WeatherKit.WeatherService.shared
+
+    /// Executes a WeatherKit operation with timeout protection.
+    private func withTimeout<T: Sendable>(
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+            group.addTask {
+                try await Task.sleep(for: weatherTimeout)
+                throw WeatherTimeoutError()
+            }
+
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+    }
 
     var tools: [Tool] {
         Tool(
@@ -41,8 +73,10 @@ final class WeatherService: Service {
             }
 
             let location = CLLocation(latitude: latitude, longitude: longitude)
-            let currentWeather = try await self.weatherService.weather(
-                for: location, including: .current)
+            log.info("Fetching current weather for \(latitude), \(longitude)")
+            let currentWeather = try await self.withTimeout {
+                try await self.weatherService.weather(for: location, including: .current)
+            }
 
             return WeatherConditions(currentWeather)
         }
@@ -89,8 +123,10 @@ final class WeatherService: Service {
             days = days.clamped(to: 1...10)
 
             let location = CLLocation(latitude: latitude, longitude: longitude)
-            let dailyForecast = try await self.weatherService.weather(
-                for: location, including: .daily)
+            log.info("Fetching daily forecast for \(latitude), \(longitude)")
+            let dailyForecast = try await self.withTimeout {
+                try await self.weatherService.weather(for: location, including: .daily)
+            }
 
             return dailyForecast.prefix(days).map { WeatherForecast($0) }
         }
@@ -139,8 +175,10 @@ final class WeatherService: Service {
             }
 
             let location = CLLocation(latitude: latitude, longitude: longitude)
-            let hourlyForecasts = try await self.weatherService.weather(
-                for: location, including: .hourly)
+            log.info("Fetching hourly forecast for \(latitude), \(longitude)")
+            let hourlyForecasts = try await self.withTimeout {
+                try await self.weatherService.weather(for: location, including: .hourly)
+            }
 
             return hourlyForecasts.prefix(hours).map { WeatherForecast($0) }
         }
@@ -187,9 +225,11 @@ final class WeatherService: Service {
             minutes = minutes.clamped(to: 1...120)
 
             let location = CLLocation(latitude: latitude, longitude: longitude)
+            log.info("Fetching minute-by-minute forecast for \(latitude), \(longitude)")
             guard
-                let minuteByMinuteForecast = try await self.weatherService.weather(
-                    for: location, including: .minute)
+                let minuteByMinuteForecast = try await self.withTimeout({
+                    try await self.weatherService.weather(for: location, including: .minute)
+                })
             else {
                 throw NSError(
                     domain: "WeatherServiceError", code: 2,
