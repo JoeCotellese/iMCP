@@ -37,7 +37,9 @@ final class WeatherService: Service {
                 throw WeatherTimeoutError()
             }
 
-            let result = try await group.next()!
+            guard let result = try await group.next() else {
+                throw WeatherTimeoutError()
+            }
             group.cancelAll()
             return result
         }
