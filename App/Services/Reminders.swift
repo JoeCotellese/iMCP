@@ -159,9 +159,18 @@ final class RemindersService: Service {
             {
                 let requestedNames = Set(
                     listNames.compactMap { $0.stringValue?.lowercased() })
-                reminderLists = reminderLists.filter {
+                let filteredLists = reminderLists.filter {
                     requestedNames.contains($0.title.lowercased())
                 }
+                if filteredLists.isEmpty {
+                    let availableLists = reminderLists.map { $0.title }.joined(separator: ", ")
+                    let requested = requestedNames.joined(separator: ", ")
+                    throw NSError(
+                        domain: "RemindersError", code: 5,
+                        userInfo: [NSLocalizedDescriptionKey: "No matching lists found for: \(requested). Available lists: \(availableLists)"]
+                    )
+                }
+                reminderLists = filteredLists
             }
 
             // Parse dates if provided
@@ -539,17 +548,21 @@ final class RemindersService: Service {
 
             // Move to different list if provided
             if case let .string(listName) = arguments["list"] {
-                if let matchingCalendar = self.eventStore.calendars(for: .reminder)
+                guard let matchingCalendar = self.eventStore.calendars(for: .reminder)
                     .first(where: { $0.title.lowercased() == listName.lowercased() })
-                {
-                    guard matchingCalendar.allowsContentModifications else {
-                        throw NSError(
-                            domain: "RemindersError", code: 4,
-                            userInfo: [NSLocalizedDescriptionKey: "Target list '\(matchingCalendar.title)' is read-only"]
-                        )
-                    }
-                    reminder.calendar = matchingCalendar
+                else {
+                    throw NSError(
+                        domain: "RemindersError", code: 5,
+                        userInfo: [NSLocalizedDescriptionKey: "List '\(listName)' not found"]
+                    )
                 }
+                guard matchingCalendar.allowsContentModifications else {
+                    throw NSError(
+                        domain: "RemindersError", code: 4,
+                        userInfo: [NSLocalizedDescriptionKey: "Target list '\(matchingCalendar.title)' is read-only"]
+                    )
+                }
+                reminder.calendar = matchingCalendar
             }
 
             // Update priority if provided
