@@ -17,7 +17,7 @@ and a [growing list of clients][mcp-clients] that support the
       <img src="Assets/calendar.svg" width="48" height="48" alt="" role="presentation"/>
     </th>
     <td><strong>Calendar</strong></td>
-    <td>View and manage calendar events, including creating new events with customizable settings like recurrence, alarms, and availability status.</td>
+    <td>Full calendar management: fetch, create, update, and delete events with support for alarms, availability status, and recurring event handling.</td>
   </tr>
   <tr>
     <th>
@@ -52,7 +52,14 @@ and a [growing list of clients][mcp-clients] that support the
       <img src="Assets/reminders.svg" width="48" height="48" alt="" role="presentation"/>
     </th>
     <td><strong>Reminders</strong></td>
-    <td>View and create reminders with customizable due dates, priorities, and alerts across different reminder lists.</td>
+    <td>Full reminder management: fetch, create, complete, update, and delete reminders with support for due dates, priorities, and alerts across lists.</td>
+  </tr>
+  <tr>
+    <th>
+      ⌘
+    </th>
+    <td><strong>Shortcuts</strong></td>
+    <td>List and run macOS Shortcuts, enabling AI assistants to trigger your custom automations.</td>
   </tr>
   <tr>
     <th>
@@ -211,14 +218,17 @@ iMCP is a macOS app that bundles a command-line executable, `imcp-server`.
   uses standard input/output for communication
   ([stdio transport][mcp-transports]).
 
-The app and CLI communicate with each other on the local network
-using [Bonjour][bonjour] for automatic discovery.
-Both advertise a service with type "\_mcp.\_tcp" and domain "local".
+The app and CLI communicate with each other on the local network.
+Two transport options are available, configurable in Settings > General:
+
+- **HTTP** (default): Direct HTTP communication on a dynamically allocated port.
+  More reliable and doesn't require Bonjour network permissions.
+- **Bonjour**: Automatic discovery using [Bonjour][bonjour] with service type "\_mcp.\_tcp".
+  Useful when HTTP port allocation is problematic.
+
 Requests from MCP clients are read by the CLI from `stdin`
 and relayed to the app;
 responses from the app are received by the CLI and written to `stdout`.
-See [`StdioProxy`](https://github.com/mattt/iMCP/blob/8cf9d250286288b06bf5d3dda78f5905ad0d7729/CLI/main.swift#L47)
-for implementation details.
 
 For this project, we created what became
 [the official Swift SDK][swift-sdk]
