@@ -2,10 +2,64 @@ import AppKit
 import CoreLocation
 import EventKit
 import Foundation
+import MCP
 import OSLog
 import Ontology
 
 private let log = Logger.service("calendar")
+
+/// Converts an EKEvent to a Value object with identifier for MCP responses
+private func eventToValue(_ event: EKEvent) -> Value {
+    var dict: [String: Value] = [
+        "identifier": .string(event.eventIdentifier),
+        "title": .string(event.title ?? ""),
+        "start": .string(ISO8601DateFormatter().string(from: event.startDate)),
+        "end": .string(ISO8601DateFormatter().string(from: event.endDate)),
+        "isAllDay": .bool(event.isAllDay),
+        "calendar": .string(event.calendar?.title ?? ""),
+        "availability": .string(event.availability.stringValue),
+        "hasRecurrenceRules": .bool(event.hasRecurrenceRules),
+    ]
+
+    if let location = event.location, !location.isEmpty {
+        dict["location"] = .string(location)
+    }
+
+    if let notes = event.notes, !notes.isEmpty {
+        dict["notes"] = .string(notes)
+    }
+
+    if let url = event.url {
+        dict["url"] = .string(url.absoluteString)
+    }
+
+    if let creationDate = event.creationDate {
+        dict["createdAt"] = .string(ISO8601DateFormatter().string(from: creationDate))
+    }
+
+    if let lastModifiedDate = event.lastModifiedDate {
+        dict["modifiedAt"] = .string(ISO8601DateFormatter().string(from: lastModifiedDate))
+    }
+
+    if let alarms = event.alarms, !alarms.isEmpty {
+        dict["alarms"] = .array(alarms.compactMap { alarm -> Value? in
+            if let absoluteDate = alarm.absoluteDate {
+                return .object([
+                    "type": .string("absolute"),
+                    "datetime": .string(ISO8601DateFormatter().string(from: absoluteDate))
+                ])
+            } else {
+                let minutes = Int(-alarm.relativeOffset / 60)
+                return .object([
+                    "type": .string("relative"),
+                    "minutes": .int(minutes)
+                ])
+            }
+        })
+    }
+
+    return .object(dict)
+}
 
 final class CalendarService: Service {
     private let eventStore = EKEventStore()
@@ -178,7 +232,7 @@ final class CalendarService: Service {
                 events = events.filter { ($0.hasRecurrenceRules) == isRecurring }
             }
 
-            return events.map { Event($0) }
+            return events.map { eventToValue($0) }
         }
         Tool(
             name: "events_create",
@@ -462,7 +516,302 @@ final class CalendarService: Service {
             // Save the event
             try self.eventStore.save(event, span: .thisEvent)
 
-            return Event(event)
+            return eventToValue(event)
+        }
+
+        Tool(
+            name: "events_get",
+            description: "Fetch a single calendar event by its identifier",
+            inputSchema: .object(
+                properties: [
+                    "identifier": .string(
+                        description: "The unique identifier of the event"
+                    )
+                ],
+                required: ["identifier"],
+                additionalProperties: false
+            ),
+            annotations: .init(
+                title: "Get Event",
+                readOnlyHint: true,
+                openWorldHint: false
+            )
+        ) { arguments in
+            try await self.activate()
+
+            guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else {
+                log.error("Calendar access not authorized")
+                throw NSError(
+                    domain: "CalendarError", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Calendar access not authorized"]
+                )
+            }
+
+            guard case let .string(identifier) = arguments["identifier"] else {
+                throw NSError(
+                    domain: "CalendarError", code: 2,
+                    userInfo: [NSLocalizedDescriptionKey: "Event identifier is required"]
+                )
+            }
+
+            guard let event = self.eventStore.event(withIdentifier: identifier) else {
+                throw NSError(
+                    domain: "CalendarError", code: 3,
+                    userInfo: [NSLocalizedDescriptionKey: "Event not found with identifier: \(identifier)"]
+                )
+            }
+
+            return eventToValue(event)
+        }
+
+        Tool(
+            name: "events_update",
+            description: "Update an existing calendar event's properties",
+            inputSchema: .object(
+                properties: [
+                    "identifier": .string(
+                        description: "The unique identifier of the event to update"
+                    ),
+                    "title": .string(
+                        description: "New title for the event"
+                    ),
+                    "start": .string(
+                        description: "New start date/time (ISO 8601 format)",
+                        format: .dateTime
+                    ),
+                    "end": .string(
+                        description: "New end date/time (ISO 8601 format)",
+                        format: .dateTime
+                    ),
+                    "location": .string(
+                        description: "New location for the event"
+                    ),
+                    "notes": .string(
+                        description: "New notes for the event"
+                    ),
+                    "url": .string(
+                        description: "New URL for the event",
+                        format: .uri
+                    ),
+                    "calendar": .string(
+                        description: "Move event to a different calendar"
+                    ),
+                    "availability": .string(
+                        description: "New availability status",
+                        enum: EKEventAvailability.allCases.map { .string($0.stringValue) }
+                    ),
+                    "alarms": .array(
+                        description: "Replace alarms (minutes before event start)",
+                        items: .integer()
+                    ),
+                    "span": .string(
+                        description: "For recurring events: thisEvent (default) or futureEvents",
+                        default: "thisEvent",
+                        enum: EKSpan.allCases.map { .string($0.stringValue) }
+                    )
+                ],
+                required: ["identifier"],
+                additionalProperties: false
+            ),
+            annotations: .init(
+                title: "Update Event",
+                destructiveHint: true,
+                openWorldHint: false
+            )
+        ) { arguments in
+            try await self.activate()
+
+            guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else {
+                log.error("Calendar access not authorized")
+                throw NSError(
+                    domain: "CalendarError", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Calendar access not authorized"]
+                )
+            }
+
+            guard case let .string(identifier) = arguments["identifier"] else {
+                throw NSError(
+                    domain: "CalendarError", code: 2,
+                    userInfo: [NSLocalizedDescriptionKey: "Event identifier is required"]
+                )
+            }
+
+            guard let event = self.eventStore.event(withIdentifier: identifier) else {
+                throw NSError(
+                    domain: "CalendarError", code: 3,
+                    userInfo: [NSLocalizedDescriptionKey: "Event not found with identifier: \(identifier)"]
+                )
+            }
+
+            guard event.calendar.allowsContentModifications else {
+                throw NSError(
+                    domain: "CalendarError", code: 4,
+                    userInfo: [NSLocalizedDescriptionKey: "Calendar '\(event.calendar.title)' is read-only"]
+                )
+            }
+
+            // Update title if provided
+            if case let .string(title) = arguments["title"] {
+                event.title = title
+            }
+
+            // Update dates if provided, with validation
+            var newStart = event.startDate!
+            var newEnd = event.endDate!
+
+            if case let .string(startStr) = arguments["start"],
+                let parsedStart = ISO8601DateFormatter.parseFlexibleISODate(startStr)
+            {
+                newStart = parsedStart
+            }
+
+            if case let .string(endStr) = arguments["end"],
+                let parsedEnd = ISO8601DateFormatter.parseFlexibleISODate(endStr)
+            {
+                newEnd = parsedEnd
+            }
+
+            // Validate date consistency
+            if newEnd < newStart {
+                throw NSError(
+                    domain: "CalendarError", code: 5,
+                    userInfo: [NSLocalizedDescriptionKey: "End date must be after start date"]
+                )
+            }
+
+            event.startDate = newStart
+            event.endDate = newEnd
+
+            // Update location if provided
+            if case let .string(location) = arguments["location"] {
+                event.location = location
+            }
+
+            // Update notes if provided
+            if case let .string(notes) = arguments["notes"] {
+                event.notes = notes
+            }
+
+            // Update URL if provided
+            if case let .string(urlString) = arguments["url"] {
+                event.url = URL(string: urlString)
+            }
+
+            // Move to different calendar if provided
+            if case let .string(calendarName) = arguments["calendar"] {
+                guard let matchingCalendar = self.eventStore.calendars(for: .event)
+                    .first(where: { $0.title.lowercased() == calendarName.lowercased() })
+                else {
+                    let availableCalendars = self.eventStore.calendars(for: .event)
+                        .map { $0.title }.joined(separator: ", ")
+                    throw NSError(
+                        domain: "CalendarError", code: 6,
+                        userInfo: [NSLocalizedDescriptionKey: "Calendar '\(calendarName)' not found. Available: \(availableCalendars)"]
+                    )
+                }
+                guard matchingCalendar.allowsContentModifications else {
+                    throw NSError(
+                        domain: "CalendarError", code: 4,
+                        userInfo: [NSLocalizedDescriptionKey: "Target calendar '\(matchingCalendar.title)' is read-only"]
+                    )
+                }
+                event.calendar = matchingCalendar
+            }
+
+            // Update availability if provided
+            if case let .string(availability) = arguments["availability"] {
+                event.availability = EKEventAvailability(availability)
+            }
+
+            // Replace alarms if provided
+            if case let .array(alarmMinutes) = arguments["alarms"] {
+                event.alarms = alarmMinutes.compactMap {
+                    guard case let .int(minutes) = $0 else { return nil }
+                    return EKAlarm(relativeOffset: TimeInterval(-minutes * 60))
+                }
+            }
+
+            // Determine span for recurring events
+            let span: EKSpan
+            if case let .string(spanStr) = arguments["span"] {
+                span = EKSpan(spanStr)
+            } else {
+                span = .thisEvent
+            }
+
+            try self.eventStore.save(event, span: span)
+
+            return eventToValue(event)
+        }
+
+        Tool(
+            name: "events_delete",
+            description: "Delete a calendar event",
+            inputSchema: .object(
+                properties: [
+                    "identifier": .string(
+                        description: "The unique identifier of the event to delete"
+                    ),
+                    "span": .string(
+                        description: "For recurring events: thisEvent (default) or futureEvents",
+                        default: "thisEvent",
+                        enum: EKSpan.allCases.map { .string($0.stringValue) }
+                    )
+                ],
+                required: ["identifier"],
+                additionalProperties: false
+            ),
+            annotations: .init(
+                title: "Delete Event",
+                destructiveHint: true,
+                openWorldHint: false
+            )
+        ) { arguments in
+            try await self.activate()
+
+            guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else {
+                log.error("Calendar access not authorized")
+                throw NSError(
+                    domain: "CalendarError", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Calendar access not authorized"]
+                )
+            }
+
+            guard case let .string(identifier) = arguments["identifier"] else {
+                throw NSError(
+                    domain: "CalendarError", code: 2,
+                    userInfo: [NSLocalizedDescriptionKey: "Event identifier is required"]
+                )
+            }
+
+            guard let event = self.eventStore.event(withIdentifier: identifier) else {
+                throw NSError(
+                    domain: "CalendarError", code: 3,
+                    userInfo: [NSLocalizedDescriptionKey: "Event not found with identifier: \(identifier)"]
+                )
+            }
+
+            guard event.calendar.allowsContentModifications else {
+                throw NSError(
+                    domain: "CalendarError", code: 4,
+                    userInfo: [NSLocalizedDescriptionKey: "Calendar '\(event.calendar.title)' is read-only"]
+                )
+            }
+
+            // Capture event details before deletion for response
+            let deletedInfo = eventToValue(event)
+
+            // Determine span for recurring events
+            let span: EKSpan
+            if case let .string(spanStr) = arguments["span"] {
+                span = EKSpan(spanStr)
+            } else {
+                span = .thisEvent
+            }
+
+            try self.eventStore.remove(event, span: span)
+
+            return deletedInfo
         }
     }
 }
