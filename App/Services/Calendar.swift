@@ -136,7 +136,7 @@ final class CalendarService: Service {
 
         Tool(
             name: "events_fetch",
-            description: "Get calendar events with filtering. Returns summary data; use events_get for full details including notes and attendees.",
+            description: "Get calendar events with filtering. Returns summary data; use events_get for full details including notes.",
             inputSchema: .object(
                 properties: [
                     "start": .string(
