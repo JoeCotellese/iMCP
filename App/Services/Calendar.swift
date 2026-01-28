@@ -61,6 +61,29 @@ private func eventToValue(_ event: EKEvent) -> Value {
     return .object(dict)
 }
 
+/// Converts an EKEvent to a summary Value for list responses (reduces token usage)
+private func eventToSummaryValue(_ event: EKEvent) -> Value {
+    var dict: [String: Value] = [
+        "identifier": .string(event.eventIdentifier),
+        "title": .string(event.title ?? ""),
+        "start": .string(ISO8601DateFormatter().string(from: event.startDate)),
+        "end": .string(ISO8601DateFormatter().string(from: event.endDate)),
+        "isAllDay": .bool(event.isAllDay),
+        "calendar": .string(event.calendar?.title ?? ""),
+        "attendeeCount": .int(event.attendees?.count ?? 0),
+        "isOrganizer": .bool(event.organizer?.isCurrentUser ?? true),
+        "availability": .string(event.availability.stringValue),
+        "hasNotes": .bool(event.notes != nil && !event.notes!.isEmpty),
+        "hasUrl": .bool(event.url != nil),
+    ]
+
+    if let location = event.location, !location.isEmpty {
+        dict["location"] = .string(location)
+    }
+
+    return .object(dict)
+}
+
 final class CalendarService: Service {
     private let eventStore = EKEventStore()
 
@@ -113,7 +136,7 @@ final class CalendarService: Service {
 
         Tool(
             name: "events_fetch",
-            description: "Get events from the calendar with flexible filtering options",
+            description: "Get calendar events with filtering. Returns summary data; use events_get for full details including notes.",
             inputSchema: .object(
                 properties: [
                     "start": .string(
@@ -145,6 +168,10 @@ final class CalendarService: Service {
                     ),
                     "hasAlarms": .boolean(),
                     "isRecurring": .boolean(),
+                    "limit": .integer(
+                        description: "Maximum number of events to return",
+                        default: .int(50)
+                    ),
                 ],
                 additionalProperties: false
             ),
@@ -232,8 +259,18 @@ final class CalendarService: Service {
                 events = events.filter { ($0.hasRecurrenceRules) == isRecurring }
             }
 
-            return events.map { eventToValue($0) }
+            // Apply limit (default 50, max 200)
+            let limit: Int
+            if case .int(let value) = arguments["limit"] {
+                limit = min(max(value, 1), 200)
+            } else {
+                limit = 50
+            }
+
+            let limitedEvents = Array(events.prefix(limit))
+            return limitedEvents.map { eventToSummaryValue($0) }
         }
+
         Tool(
             name: "events_create",
             description: "Create a new calendar event with specified properties",
