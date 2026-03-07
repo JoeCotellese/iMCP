@@ -43,7 +43,12 @@ private struct ServiceRowView: View {
     var body: some View {
         HStack {
             serviceIcon
-            Text(config.name)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(config.name)
+                Text(config.description)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
             Spacer()
             Toggle("", isOn: config.binding)
                 .toggleStyle(.switch)
@@ -54,6 +59,7 @@ private struct ServiceRowView: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .accessibilityElement(children: .combine)
         .contentShape(Rectangle())
         .onTapGesture {
             if config.hasDetailView {
