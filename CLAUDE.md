@@ -4,17 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build Commands
 
-Use `xcsift` to filter xcodebuild output for cleaner, more readable results:
+A Makefile wraps all build commands. Run `make help` to see available targets.
 
 ```bash
-# Build the app (includes CLI target)
-xcodebuild -project iMCP.xcodeproj -scheme iMCP build 2>&1 | xcsift
-
-# Build for release
-xcodebuild -project iMCP.xcodeproj -scheme iMCP -configuration Release build 2>&1 | xcsift
-
-# Clean build
-xcodebuild -project iMCP.xcodeproj -scheme iMCP clean 2>&1 | xcsift
+make build      # Release build
+make debug      # Debug build
+make install    # Build and copy to /Applications
+make clean      # Clean build artifacts and DerivedData
+make run        # Build and launch
+make resolve    # Resolve Swift package dependencies
 ```
 
 The project has two targets:

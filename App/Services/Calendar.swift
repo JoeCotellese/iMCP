@@ -102,7 +102,7 @@ final class CalendarService: Service {
     var tools: [Tool] {
         Tool(
             name: "calendars_list",
-            description: "List available calendars",
+            description: "List available calendars. Returns calendar names for filtering events_fetch",
             inputSchema: .object(
                 properties: [:],
                 additionalProperties: false
@@ -286,12 +286,17 @@ final class CalendarService: Service {
                     "calendar": .string(
                         description: "Calendar to use (uses default if not specified)"
                     ),
-                    "location": .string(),
-                    "notes": .string(),
+                    "location": .string(
+                        description: "Event location or address"
+                    ),
+                    "notes": .string(
+                        description: "Additional notes for the event"
+                    ),
                     "url": .string(
                         format: .uri
                     ),
                     "isAllDay": .boolean(
+                        description: "Whether this is an all-day event",
                         default: false
                     ),
                     "availability": .string(
@@ -300,84 +305,9 @@ final class CalendarService: Service {
                         enum: EKEventAvailability.allCases.map { .string($0.stringValue) }
                     ),
                     "alarms": .array(
-                        description: "Alarm configurations for the event",
-                        items: .anyOf(
-                            [
-                                // Relative alarm (minutes before event)
-                                .object(
-                                    properties: [
-                                        "type": .string(
-                                            const: "relative",
-                                        ),
-                                        "minutes": .integer(
-                                            description:
-                                                "Minutes offset from event start (negative for before, positive for after)"
-                                        ),
-                                        "sound": .string(
-                                            description: "Sound name to play when alarm triggers",
-                                            enum: Sound.allCases.map { .string($0.rawValue) }
-                                        ),
-                                        "emailAddress": .string(
-                                            description: "Email address to send notification to"
-                                        ),
-                                    ],
-                                    required: ["minutes"],
-                                    additionalProperties: false
-                                ),
-                                // Absolute alarm (specific date/time)
-                                .object(
-                                    properties: [
-                                        "type": .string(
-                                            const: "absolute",
-                                        ),
-                                        "datetime": .string(
-                                            format: .dateTime
-                                        ),
-                                        "sound": .string(
-                                            description: "Sound name to play when alarm triggers",
-                                            enum: Sound.allCases.map { .string($0.rawValue) }
-                                        ),
-                                        "emailAddress": .string(
-                                            description: "Email address to send notification to"
-                                        ),
-                                    ],
-                                    required: ["datetime"],
-                                    additionalProperties: false
-                                ),
-                                // Proximity alarm (location-based)
-                                .object(
-                                    properties: [
-                                        "type": .string(
-                                            const: "proximity",
-                                        ),
-                                        "proximity": .string(
-                                            description: "Proximity trigger type",
-                                            default: "enter",
-                                            enum: ["enter", "leave"]
-                                        ),
-                                        "locationTitle": .string(),
-                                        "latitude": .number(),
-                                        "longitude": .number(),
-                                        "radius": .number(
-                                            description: "Radius in meters",
-                                            default: .int(200)
-                                        ),
-                                        "sound": .string(
-                                            description: "Sound name to play when alarm triggers",
-                                            enum: Sound.allCases.map { .string($0.rawValue) }
-                                        ),
-                                        "emailAddress": .string(
-                                            description: "Email address to send notification to"
-                                        ),
-                                    ],
-                                    required: ["locationTitle", "latitude", "longitude"],
-                                    additionalProperties: false
-                                ),
-                            ]
-                        )
+                        description: "Minutes before event start for each alarm",
+                        items: .integer()
                     ),
-                    "hasAlarms": .boolean(),
-                    "isRecurring": .boolean(),
                 ],
                 required: ["title", "start", "end"],
                 additionalProperties: false
@@ -478,76 +408,11 @@ final class CalendarService: Service {
             }
 
             // Set alarms
-            if case let .array(alarmConfigs) = arguments["alarms"] {
-                var alarms: [EKAlarm] = []
-
-                for alarmConfig in alarmConfigs {
-                    guard case let .object(config) = alarmConfig else { continue }
-
-                    var alarm: EKAlarm?
-
-                    let alarmType = config["type"]?.stringValue ?? "relative"
-                    switch alarmType {
-                    case "relative":
-                        if case let .int(minutes) = config["minutes"] {
-                            alarm = EKAlarm(relativeOffset: TimeInterval(-minutes * 60))
-                        }
-
-                    case "absolute":
-                        if case let .string(datetimeStr) = config["datetime"],
-                            let absoluteDate = ISO8601DateFormatter.parseFlexibleISODate(
-                                datetimeStr)
-                        {
-                            alarm = EKAlarm(absoluteDate: absoluteDate)
-                        }
-
-                    case "proximity":
-                        if case let .string(locationTitle) = config["locationTitle"],
-                            case let .double(latitude) = config["latitude"],
-                            case let .double(longitude) = config["longitude"]
-                        {
-                            alarm = EKAlarm()
-
-                            // Create structured location
-                            let structuredLocation = EKStructuredLocation(title: locationTitle)
-                            structuredLocation.geoLocation = CLLocation(
-                                latitude: latitude, longitude: longitude)
-
-                            if case let .double(radius) = config["radius"] {
-                                structuredLocation.radius = radius
-                            } else if case let .int(radiusInt) = config["radius"] {
-                                structuredLocation.radius = Double(radiusInt)
-                            }
-
-                            // Set proximity type
-                            let proximityType = config["proximity"]?.stringValue ?? "enter"
-                            let proximity: EKAlarmProximity =
-                                proximityType == "enter" ? .enter : .leave
-                            alarm?.proximity = proximity
-                            alarm?.structuredLocation = structuredLocation
-                        }
-
-                    default:
-                        log.error("Unexpected alarm type encountered: \(alarmType, privacy: .public)")
-                        continue
-                    }
-
-                    guard let alarm = alarm else { continue }
-
-                    if case let .string(soundName) = config["sound"],
-                        Sound(rawValue: soundName) != nil
-                    {
-                        alarm.soundName = soundName
-                    }
-
-                    if case let .string(email) = config["emailAddress"], !email.isEmpty {
-                        alarm.emailAddress = email
-                    }
-
-                    alarms.append(alarm)
+            if case let .array(alarmMinutes) = arguments["alarms"] {
+                event.alarms = alarmMinutes.compactMap {
+                    guard case let .int(minutes) = $0 else { return nil }
+                    return EKAlarm(relativeOffset: TimeInterval(-minutes * 60))
                 }
-
-                event.alarms = alarms
             }
 
             // Save the event

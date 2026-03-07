@@ -123,8 +123,7 @@ final class ContactsService: Service {
     var tools: [Tool] {
         Tool(
             name: "contacts_me",
-            description:
-                "Get contact information about the user, including name, phone number, email, birthday, relations, address, online presence, and occupation. Always run this tool when the user asks a question that requires personal information about themselves.",
+            description: "Get the current user's contact card (name, phone, email, birthday, address, occupation)",
             inputSchema: .object(
                 properties: [:],
                 additionalProperties: false

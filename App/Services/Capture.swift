@@ -129,18 +129,6 @@ final class CaptureService: NSObject, Service {
                         default: .string(FlashMode.default.rawValue),
                         enum: FlashMode.allCases.map { .string($0.rawValue) }
                     ),
-                    "autoExposure": .boolean(
-                        description: "Enable automatic exposure and light balancing",
-                        default: true
-                    ),
-                    "autoFocus": .boolean(
-                        description: "Enable automatic focus",
-                        default: true
-                    ),
-                    "autoWhiteBalance": .boolean(
-                        description: "Enable automatic white balance",
-                        default: true
-                    ),
                     "delay": .number(
                         description: "Delay before taking photo, in seconds",
                         default: 1,

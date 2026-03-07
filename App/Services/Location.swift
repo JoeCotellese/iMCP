@@ -89,7 +89,7 @@ final class LocationService: NSObject, Service, CLLocationManagerDelegate {
     var tools: [Tool] {
         Tool(
             name: "location_current",
-            description: "Get the user's current location",
+            description: "Get the user's current location. Returns coordinates for use with weather and maps tools",
             inputSchema: .object(
                 properties: [:],
                 additionalProperties: false
