@@ -32,6 +32,7 @@ enum ServiceCategory: String, CaseIterable, Identifiable {
 struct ServiceConfig: Identifiable {
     let id: String
     let name: String
+    let description: String
     let iconName: String
     let color: Color
     let service: any Service
@@ -47,6 +48,7 @@ struct ServiceConfig: Identifiable {
 
     init(
         name: String,
+        description: String,
         iconName: String,
         color: Color,
         service: any Service,
@@ -56,6 +58,7 @@ struct ServiceConfig: Identifiable {
     ) {
         self.id = String(describing: type(of: service))
         self.name = name
+        self.description = description
         self.iconName = iconName
         self.color = color
         self.service = service
@@ -95,6 +98,7 @@ enum ServiceRegistry {
             // Personal Data
             ServiceConfig(
                 name: "Calendar",
+                description: "Read and search your calendar events",
                 iconName: "calendar",
                 color: .red,
                 service: CalendarService.shared,
@@ -103,6 +107,7 @@ enum ServiceRegistry {
             ),
             ServiceConfig(
                 name: "Contacts",
+                description: "Look up people from your address book",
                 iconName: "person.crop.square.filled.and.at.rectangle.fill",
                 color: .brown,
                 service: ContactsService.shared,
@@ -111,6 +116,7 @@ enum ServiceRegistry {
             ),
             ServiceConfig(
                 name: "Location",
+                description: "Share your current location",
                 iconName: "location.fill",
                 color: .blue,
                 service: LocationService.shared,
@@ -119,6 +125,7 @@ enum ServiceRegistry {
             ),
             ServiceConfig(
                 name: "Maps",
+                description: "Search for places and get directions",
                 iconName: "mappin.and.ellipse",
                 color: .purple,
                 service: MapsService.shared,
@@ -127,6 +134,7 @@ enum ServiceRegistry {
             ),
             ServiceConfig(
                 name: "Messages",
+                description: "Read your iMessage conversations",
                 iconName: "message.fill",
                 color: .green,
                 service: MessageService.shared,
@@ -135,6 +143,7 @@ enum ServiceRegistry {
             ),
             ServiceConfig(
                 name: "Reminders",
+                description: "Access and manage your reminders",
                 iconName: "list.bullet",
                 color: .orange,
                 service: RemindersService.shared,
@@ -143,6 +152,7 @@ enum ServiceRegistry {
             ),
             ServiceConfig(
                 name: "Weather",
+                description: "Get current weather and forecasts",
                 iconName: "cloud.sun.fill",
                 color: .cyan,
                 service: WeatherService.shared,
@@ -152,6 +162,7 @@ enum ServiceRegistry {
             // Productivity
             ServiceConfig(
                 name: "Shortcuts",
+                description: "Run your Siri Shortcuts automations",
                 iconName: "apps.iphone",
                 color: .pink,
                 service: ShortcutsService.shared,
@@ -161,6 +172,7 @@ enum ServiceRegistry {
             // System
             ServiceConfig(
                 name: "Capture",
+                description: "Capture screenshots and screen recordings",
                 iconName: "camera.on.rectangle.fill",
                 color: .gray.mix(with: .black, by: 0.7),
                 service: CaptureService.shared,
@@ -169,6 +181,7 @@ enum ServiceRegistry {
             ),
             ServiceConfig(
                 name: "Utilities",
+                description: "Clipboard access and system commands",
                 iconName: "wrench.and.screwdriver.fill",
                 color: .gray,
                 service: UtilitiesService.shared,
