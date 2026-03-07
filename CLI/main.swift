@@ -15,6 +15,7 @@ import class Foundation.URLResponse
 import class Foundation.HTTPURLResponse
 import class Foundation.FileManager
 import class Foundation.JSONDecoder
+import class Foundation.JSONSerialization
 
 var log = Logger(label: "me.mattt.iMCP.server") { StreamLogHandler.standardError(label: $0) }
 #if DEBUG
@@ -691,6 +692,14 @@ actor HTTPMCPService: Service {
 
                 guard !messageData.isEmpty else { continue }
 
+                // Parse the request to extract the id (needed for error responses)
+                let requestId: Any? = {
+                    guard let json = try? JSONSerialization.jsonObject(with: Data(messageData)) as? [String: Any] else {
+                        return nil
+                    }
+                    return json["id"]
+                }()
+
                 do {
                     let response = try await sendRequest(Data(messageData))
                     var outputData = response
@@ -698,11 +707,22 @@ actor HTTPMCPService: Service {
                     stdout.write(outputData)
                 } catch {
                     await log.error("HTTP request failed: \(error)")
-                    // Write error response to stdout
-                    let errorResponse = #"{"jsonrpc":"2.0","error":{"code":-32603,"message":"HTTP error"},"id":null}"#
-                    if var outputData = errorResponse.data(using: .utf8) {
-                        outputData.append(UInt8(ascii: "\n"))
-                        stdout.write(outputData)
+                    // Only send error responses for requests (which have an id).
+                    // Notifications (no id) must never receive a response per JSON-RPC 2.0.
+                    if let id = requestId {
+                        let idJson: String
+                        if let intId = id as? Int {
+                            idJson = "\(intId)"
+                        } else if let strId = id as? String {
+                            idJson = "\"\(strId)\""
+                        } else {
+                            idJson = "0"
+                        }
+                        let errorResponse = #"{"jsonrpc":"2.0","error":{"code":-32603,"message":"HTTP error: \#(error)"},"id":\#(idJson)}"#
+                        if var outputData = errorResponse.data(using: .utf8) {
+                            outputData.append(UInt8(ascii: "\n"))
+                            stdout.write(outputData)
+                        }
                     }
                 }
             }
