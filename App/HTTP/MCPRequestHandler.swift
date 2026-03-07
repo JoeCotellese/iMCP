@@ -68,7 +68,7 @@ actor MCPRequestHandler {
 
         for clientID in staleIDs {
             sessions.removeValue(forKey: clientID)
-            log.debug("Removed stale session for client: \(clientID)")
+            log.debug("Removed stale session for client: \(clientID, privacy: .public)")
         }
 
         if !staleIDs.isEmpty {
@@ -109,7 +109,7 @@ actor MCPRequestHandler {
             sessions[clientID] = session
         }
 
-        log.debug("Handling method: \(method) for client: \(clientID)")
+        log.debug("Handling method: \(method, privacy: .public) for client: \(clientID, privacy: .public)")
 
         // Route to appropriate handler
         switch method {
@@ -184,7 +184,7 @@ actor MCPRequestHandler {
 
         sessions[clientID] = session
 
-        log.notice("Client initialized: \(clientName) v\(clientVersion)")
+        log.notice("Client initialized: \(clientName, privacy: .public) v\(clientVersion, privacy: .public)")
 
         // Return server capabilities
         let result: [String: Any] = [
@@ -255,7 +255,7 @@ actor MCPRequestHandler {
             }
         }
 
-        log.info("Returning \(tools.count) tools for client: \(clientID)")
+        log.info("Returning \(tools.count, privacy: .public) tools for client: \(clientID, privacy: .public)")
 
         return makeSuccessResponse(id: id, result: ["tools": tools])
     }
@@ -280,7 +280,7 @@ actor MCPRequestHandler {
         // Convert raw arguments to Value dictionary
         let arguments = convertToValueDict(rawArguments)
 
-        log.notice("Tool call: \(toolName) from client: \(clientID)")
+        log.notice("Tool call: \(toolName, privacy: .public) from client: \(clientID, privacy: .public)")
 
         // Find and execute the tool
         for service in ServiceRegistry.services {
@@ -292,7 +292,7 @@ actor MCPRequestHandler {
                         continue
                     }
 
-                    log.notice("Tool \(toolName) executed successfully")
+                    log.notice("Tool \(toolName, privacy: .public) executed successfully")
 
                     // Format the response based on value type
                     switch value {
@@ -321,13 +321,13 @@ actor MCPRequestHandler {
                         return makeToolResult(id: id, content: [["type": "text", "text": text]], isError: false)
                     }
                 } catch {
-                    log.error("Error executing tool \(toolName): \(error)")
+                    log.error("Error executing tool \(toolName, privacy: .public): \(error, privacy: .public)")
                     return makeToolResult(id: id, content: [["type": "text", "text": "Error: \(error)"]], isError: true)
                 }
             }
         }
 
-        log.error("Tool not found or service not enabled: \(toolName)")
+        log.error("Tool not found or service not enabled: \(toolName, privacy: .public)")
         return makeToolResult(id: id, content: [["type": "text", "text": "Tool not found or service not enabled: \(toolName)"]], isError: true)
     }
 

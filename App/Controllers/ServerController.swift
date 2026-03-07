@@ -312,10 +312,10 @@ final class ServerController: ObservableObject {
         while let pendingIndex = pendingApprovals.firstIndex(where: { $0.0 == clientID }) {
             let (_, pendingApprove, pendingDeny) = pendingApprovals.remove(at: pendingIndex)
             if approved {
-                log.notice("Approving pending connection for client: \(clientID)")
+                log.notice("Approving pending connection for client: \(clientID, privacy: .public)")
                 pendingApprove()
             } else {
-                log.notice("Denying pending connection for client: \(clientID)")
+                log.notice("Denying pending connection for client: \(clientID, privacy: .public)")
                 pendingDeny()
             }
         }
@@ -343,7 +343,7 @@ final class ServerController: ObservableObject {
                     return false
                 }
 
-                log.debug("ServerManager: Approval handler called for client \(clientInfo.name)")
+                log.debug("ServerManager: Approval handler called for client \(clientInfo.name, privacy: .public)")
 
                 // Create a continuation to wait for the user's response
                 return await withCheckedContinuation { continuation in
@@ -396,7 +396,7 @@ final class ServerController: ObservableObject {
             try data.write(to: Self.configFile)
 
             let portInfo = httpPort.map { ", port \($0)" } ?? ""
-            log.info("Wrote transport config: \(transport)\(portInfo)")
+            log.info("Wrote transport config: \(transport, privacy: .public)\(portInfo, privacy: .public)")
         } catch {
             log.error("Failed to write transport config: \(error)")
         }
@@ -415,7 +415,7 @@ final class ServerController: ObservableObject {
         await handler.setApprovalHandler { [weak self] clientID, clientInfo in
             guard let self = self else { return false }
 
-            log.debug("HTTP: Approval handler called for client \(clientInfo.name)")
+            log.debug("HTTP: Approval handler called for client \(clientInfo.name, privacy: .public)")
 
             return await withCheckedContinuation { continuation in
                 let lock = NSLock()
@@ -455,7 +455,7 @@ final class ServerController: ObservableObject {
 
             // Get the bound port and write config for CLI
             if let boundPort = await server.boundPort {
-                log.notice("HTTP transport started on port \(boundPort)")
+                log.notice("HTTP transport started on port \(boundPort, privacy: .public)")
                 writeTransportConfig(transport: "http", httpPort: boundPort)
             } else {
                 log.warning("HTTP server started but boundPort is nil")
@@ -529,7 +529,7 @@ final class ServerController: ObservableObject {
     }
 
     private func updateServerStatus(_ status: String) {
-        log.info("Server status updated: \(status)")
+        log.info("Server status updated: \(status, privacy: .public)")
         self.serverStatus = status
     }
 
@@ -549,7 +549,7 @@ final class ServerController: ObservableObject {
             if let error = error {
                 log.error("Failed to send notification: \(error.localizedDescription)")
             } else {
-                log.info("Sent notification for client connection: \(clientName)")
+                log.info("Sent notification for client connection: \(clientName, privacy: .public)")
             }
         }
     }
@@ -557,11 +557,11 @@ final class ServerController: ObservableObject {
     private func showConnectionApprovalAlert(
         clientID: String, approve: @escaping () -> Void, deny: @escaping () -> Void
     ) {
-        log.notice("Connection approval requested for client: \(clientID)")
+        log.notice("Connection approval requested for client: \(clientID, privacy: .public)")
 
         // Check if this client is already trusted
         if isClientTrusted(clientID) {
-            log.notice("Client \(clientID) is already trusted, auto-approving")
+            log.notice("Client \(clientID, privacy: .public) is already trusted, auto-approving")
             approve()
 
             // Send notification for trusted connections
@@ -574,7 +574,7 @@ final class ServerController: ObservableObject {
 
         // Check if there's already an active dialog for this client
         guard !activeApprovalDialogs.contains(clientID) else {
-            log.info("Adding to pending approvals for client: \(clientID)")
+            log.info("Adding to pending approvals for client: \(clientID, privacy: .public)")
             pendingApprovals.append((clientID, approve, deny))
             return
         }
@@ -656,16 +656,16 @@ actor MCPConnectionManager {
 
     func start(approvalHandler: @escaping (MCP.Client.Info) async -> Bool) async throws {
         do {
-            log.notice("Starting MCP server for connection: \(self.connectionID)")
+            log.notice("Starting MCP server for connection: \(self.connectionID, privacy: .public)")
             try await server.start(transport: transport) { [weak self] clientInfo, capabilities in
                 guard let self = self else { throw MCPError.connectionClosed }
 
-                log.info("Received initialize request from client: \(clientInfo.name)")
+                log.info("Received initialize request from client: \(clientInfo.name, privacy: .public)")
 
                 // Request user approval
                 let approved = await approvalHandler(clientInfo)
                 log.info(
-                    "Approval result for connection \(connectionID): \(approved ? "Approved" : "Denied")"
+                    "Approval result for connection \(connectionID, privacy: .public): \(approved ? "Approved" : "Denied", privacy: .public)"
                 )
 
                 if !approved {
@@ -674,7 +674,7 @@ actor MCPConnectionManager {
                 }
             }
 
-            log.notice("MCP Server started successfully for connection: \(self.connectionID)")
+            log.notice("MCP Server started successfully for connection: \(self.connectionID, privacy: .public)")
 
             // Register handlers after successful approval
             await registerHandlers()
@@ -699,17 +699,17 @@ actor MCPConnectionManager {
                 case .ready, .setup, .preparing, .waiting:
                     break
                 case .cancelled:
-                    log.error("Connection \(self.connectionID) was cancelled, removing")
+                    log.error("Connection \(self.connectionID, privacy: .public) was cancelled, removing")
                     await parentManager.removeConnection(connectionID)
                     break outer
                 case .failed(let error):
                     log.error(
-                        "Connection \(self.connectionID) failed with error \(error), removing"
+                        "Connection \(self.connectionID, privacy: .public) failed with error \(error, privacy: .public), removing"
                     )
                     await parentManager.removeConnection(connectionID)
                     break outer
                 @unknown default:
-                    log.debug("Connection \(self.connectionID) in unknown state, skipping")
+                    log.debug("Connection \(self.connectionID, privacy: .public) in unknown state, skipping")
                 }
 
                 // Check again after 30 seconds
@@ -1021,7 +1021,7 @@ actor ServerNetworkManager {
     }
 
     func removeConnection(_ id: UUID) async {
-        log.debug("Removing connection: \(id)")
+        log.debug("Removing connection: \(id, privacy: .public)")
 
         // Stop the connection manager
         if let connectionManager = connections[id] {
@@ -1042,7 +1042,7 @@ actor ServerNetworkManager {
     // Handle new incoming connections
     private func handleNewConnection(_ connection: NWConnection) async {
         let connectionID = UUID()
-        log.info("Handling new connection: \(connectionID)")
+        log.info("Handling new connection: \(connectionID, privacy: .public)")
 
         // Create a connection manager
         let connectionManager = MCPConnectionManager(
@@ -1076,9 +1076,9 @@ actor ServerNetworkManager {
                     await approvalHandler(connectionID, clientInfo)
                 }
 
-                log.notice("Connection \(connectionID) successfully established")
+                log.notice("Connection \(connectionID, privacy: .public) successfully established")
             } catch {
-                log.error("Failed to establish connection \(connectionID): \(error)")
+                log.error("Failed to establish connection \(connectionID, privacy: .public): \(error, privacy: .public)")
                 await removeConnection(connectionID)
             }
         }
@@ -1098,7 +1098,7 @@ actor ServerNetworkManager {
                 self.connections[connectionID] != nil
             {  // Connection object still exists
                 log.warning(
-                    "Connection \(connectionID) setup timed out (task still in registry), closing it"
+                    "Connection \(connectionID, privacy: .public) setup timed out (task still in registry), closing it"
                 )
                 await removeConnection(connectionID)
             }
@@ -1108,13 +1108,13 @@ actor ServerNetworkManager {
     func registerHandlers(for server: MCP.Server, connectionID: UUID) async {
         // Register prompts/list handler
         await server.withMethodHandler(ListPrompts.self) { _ in
-            log.debug("Handling ListPrompts request for \(connectionID)")
+            log.debug("Handling ListPrompts request for \(connectionID, privacy: .public)")
             return ListPrompts.Result(prompts: [])
         }
 
         // Register the resources/list handler
         await server.withMethodHandler(ListResources.self) { _ in
-            log.debug("Handling ListResources request for \(connectionID)")
+            log.debug("Handling ListResources request for \(connectionID, privacy: .public)")
             return ListResources.Result(resources: [])
         }
 
@@ -1124,7 +1124,7 @@ actor ServerNetworkManager {
                 return ListTools.Result(tools: [])
             }
 
-            log.debug("Handling ListTools request for \(connectionID)")
+            log.debug("Handling ListTools request for \(connectionID, privacy: .public)")
 
             var tools: [MCP.Tool] = []
             if await self.isEnabledState {
@@ -1136,7 +1136,7 @@ actor ServerNetworkManager {
                         isServiceEnabled
                     {
                         for tool in service.tools {
-                            log.debug("Adding tool: \(tool.name)")
+                            log.debug("Adding tool: \(tool.name, privacy: .public)")
                             tools.append(
                                 .init(
                                     name: tool.name,
@@ -1150,7 +1150,7 @@ actor ServerNetworkManager {
                 }
             }
 
-            log.info("Returning \(tools.count) available tools for \(connectionID)")
+            log.info("Returning \(tools.count, privacy: .public) available tools for \(connectionID, privacy: .public)")
             return ListTools.Result(tools: tools)
         }
 
@@ -1163,7 +1163,7 @@ actor ServerNetworkManager {
                 )
             }
 
-            log.notice("Tool call received from \(connectionID): \(params.name)")
+            log.notice("Tool call received from \(connectionID, privacy: .public): \(params.name, privacy: .public)")
 
             guard await self.isEnabledState else {
                 log.notice("Tool call rejected: iMCP is disabled")
@@ -1190,7 +1190,7 @@ actor ServerNetworkManager {
                             continue
                         }
 
-                        log.notice("Tool \(params.name) executed successfully for \(connectionID)")
+                        log.notice("Tool \(params.name, privacy: .public) executed successfully for \(connectionID, privacy: .public)")
                         switch value {
                         case .data(let mimeType?, let data) where mimeType.hasPrefix("audio/"):
                             return CallTool.Result(
@@ -1222,13 +1222,13 @@ actor ServerNetworkManager {
                         }
                     } catch {
                         log.error(
-                            "Error executing tool \(params.name): \(error.localizedDescription)")
+                            "Error executing tool \(params.name, privacy: .public): \(error.localizedDescription, privacy: .public)")
                         return CallTool.Result(content: [.text("Error: \(error)")], isError: true)
                     }
                 }
             }
 
-            log.error("Tool not found or service not enabled: \(params.name)")
+            log.error("Tool not found or service not enabled: \(params.name, privacy: .public)")
             return CallTool.Result(
                 content: [.text("Tool not found or service not enabled: \(params.name)")],
                 isError: true
