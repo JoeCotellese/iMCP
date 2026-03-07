@@ -6,6 +6,24 @@ import Ontology
 
 private let log = Logger.service("reminders")
 
+/// Converts an EKReminder to a summary Value for list responses (reduces token usage)
+private func reminderToSummaryValue(_ reminder: EKReminder) -> Value {
+    var dict: [String: Value] = [
+        "identifier": .string(reminder.calendarItemIdentifier),
+        "title": .string(reminder.title ?? ""),
+        "isCompleted": .bool(reminder.isCompleted),
+        "priority": .string(EKReminderPriority(rawValue: UInt(reminder.priority))?.stringValue ?? "none"),
+        "list": .string(reminder.calendar?.title ?? ""),
+        "hasNotes": .bool(reminder.notes != nil && !reminder.notes!.isEmpty),
+        "hasAlarms": .bool(reminder.alarms != nil && !reminder.alarms!.isEmpty),
+    ]
+    if let dueDateComponents = reminder.dueDateComponents,
+       let dueDate = Calendar.current.date(from: dueDateComponents) {
+        dict["due"] = .string(ISO8601DateFormatter().string(from: dueDate))
+    }
+    return .object(dict)
+}
+
 /// Converts an EKReminder to a Value object with identifier for MCP responses
 private func reminderToValue(_ reminder: EKReminder) -> Value {
     var dict: [String: Value] = [
@@ -76,7 +94,7 @@ final class RemindersService: Service {
     var tools: [Tool] {
         Tool(
             name: "reminders_lists",
-            description: "List available reminder lists",
+            description: "List available reminder lists. Returns list names for filtering reminders_fetch",
             inputSchema: .object(
                 properties: [:],
                 additionalProperties: false
@@ -110,7 +128,7 @@ final class RemindersService: Service {
 
         Tool(
             name: "reminders_fetch",
-            description: "Get reminders from the reminders app with flexible filtering options",
+            description: "Get reminders with filtering. Returns summary data; use reminders_get for full details including notes.",
             inputSchema: .object(
                 properties: [
                     "completed": .boolean(
@@ -244,7 +262,7 @@ final class RemindersService: Service {
                 }
             }
 
-            return filteredReminders.map { reminderToValue($0) }
+            return filteredReminders.map { reminderToSummaryValue($0) }
         }
 
         Tool(
@@ -252,7 +270,9 @@ final class RemindersService: Service {
             description: "Create a new reminder with specified properties",
             inputSchema: .object(
                 properties: [
-                    "title": .string(),
+                    "title": .string(
+                        description: "Title of the reminder"
+                    ),
                     "due": .string(
                         format: .dateTime
                     ),

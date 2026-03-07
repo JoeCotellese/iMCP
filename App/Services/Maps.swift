@@ -256,8 +256,7 @@ final class MapsService: NSObject, Service {
             inputSchema: .object(
                 properties: [
                     "category": .string(
-                        description: "POI category",
-                        enum: MKPointOfInterestCategory.allCases.map { .string($0.stringValue) }
+                        description: "POI category (e.g. restaurant, cafe, hotel, hospital, park, store, museum, airport, gasStation, parking, pharmacy, gym, library, theater, bank)"
                     ),
                     "latitude": .number(),
                     "longitude": .number(),
@@ -462,22 +461,9 @@ final class MapsService: NSObject, Service {
                         default: "standard",
                         enum: ["standard", "satellite", "hybrid", "mutedStandard"]
                     ),
-                    "showPointsOfInterest": .oneOf(
-                        [
-                            .boolean(
-                                description: "Show all (true) or no (false) POIs",
-                                default: false
-                            ),
-                            .array(
-                                description: "Specific POI types to show",
-                                items: .anyOf(
-                                    MKPointOfInterestCategory.allCases.map {
-                                        .string(const: .string($0.stringValue))
-                                    }
-                                ),
-                                minItems: 1
-                            ),
-                        ]
+                    "showPointsOfInterest": .boolean(
+                        description: "Show points of interest on the map",
+                        default: false
                     ),
                     "showBuildings": .boolean(
                         description: "Whether to show buildings",
@@ -532,28 +518,9 @@ final class MapsService: NSObject, Service {
             options.size = CGSize(width: width, height: height)
 
             let filter: MKPointOfInterestFilter
-            switch arguments["showPointsOfInterest"] {
-            case .bool(true), .string("true"):
+            if case .bool(true) = arguments["showPointsOfInterest"] {
                 filter = .includingAll
-            case .bool(false), .string("false"):
-                filter = .excludingAll
-            case let .string(string):
-                do {
-                    let jsonData = string.data(using: .utf8)!
-                    let poiStrings = try JSONDecoder().decode([String].self, from: jsonData)
-                    let categories = poiStrings.compactMap {
-                        MKPointOfInterestCategory.from(string: $0)
-                    }
-                    filter = categories.isEmpty ? .excludingAll : .init(including: categories)
-                } catch {
-                    filter = .excludingAll
-                }
-            case let .array(poiTypes):
-                let categories = poiTypes.compactMap { $0.stringValue }.compactMap {
-                    MKPointOfInterestCategory.from(string: $0)
-                }
-                filter = categories.isEmpty ? .excludingAll : .init(including: categories)
-            default:
+            } else {
                 filter = .excludingAll
             }
             options.pointOfInterestFilter = filter
