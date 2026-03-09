@@ -116,7 +116,9 @@ actor MCPRequestHandler {
         case "initialize":
             return try await handleInitialize(id: id, params: params, clientID: clientID)
 
-        case "initialized":
+        case "initialized", _ where method.hasPrefix("notifications/"):
+            // Notifications don't require a JSON-RPC response, but the HTTP
+            // transport needs a body to avoid empty-response errors in the CLI.
             return makeSuccessResponse(id: id, result: [:])
 
         case "ping":
@@ -391,7 +393,10 @@ actor MCPRequestHandler {
             "result": result
         ]
 
-        if let id = id {
+        // Only include id if it's a valid JSON-RPC id (string or number).
+        // NSNull (JSON null) and nil are excluded to avoid sending "id":null,
+        // which MCP clients reject.
+        if let id = id, !(id is NSNull) {
             response["id"] = id
         }
 
@@ -414,7 +419,10 @@ actor MCPRequestHandler {
     private func serializeJSON(_ dict: [String: Any]) -> String {
         guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys, .withoutEscapingSlashes]),
               let string = String(data: data, encoding: .utf8) else {
-            return #"{"jsonrpc":"2.0","error":{"code":-32603,"message":"Serialization error"},"id":null}"#
+            // Fallback without id to avoid sending "id":null which MCP clients reject.
+            // This is a last-resort path — the caller should have set a valid id.
+            log.error("JSON serialization failed for response")
+            return #"{"jsonrpc":"2.0","error":{"code":-32603,"message":"Serialization error"}}"#
         }
         return string
     }

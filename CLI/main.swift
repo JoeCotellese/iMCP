@@ -16,6 +16,7 @@ import class Foundation.HTTPURLResponse
 import class Foundation.FileManager
 import class Foundation.JSONDecoder
 import class Foundation.JSONSerialization
+import class Foundation.NSNull
 
 var log = Logger(label: "me.mattt.iMCP.server") { StreamLogHandler.standardError(label: $0) }
 #if DEBUG
@@ -436,6 +437,15 @@ actor StdioProxy {
                     // Remove processed message from buffer
                     networkToStdoutBuffer = networkToStdoutBuffer[(newlineIndex + 1)...]
 
+                    // Filter out JSON-RPC messages with null id — MCP clients reject these.
+                    // Per JSON-RPC 2.0, id must be a String or Number in responses.
+                    if let json = try? JSONSerialization.jsonObject(with: Data(messageData)) as? [String: Any],
+                       json["jsonrpc"] != nil,
+                       let idValue = json["id"], idValue is NSNull {
+                        await log.debug("Dropping JSON-RPC message with null id to prevent client validation error")
+                        continue
+                    }
+
                     // Write complete message to stdout
                     var remainingDataToWrite = messageWithNewline
                     while !remainingDataToWrite.isEmpty {
@@ -702,6 +712,8 @@ actor HTTPMCPService: Service {
 
                 do {
                     let response = try await sendRequest(Data(messageData))
+                    // Skip empty responses (e.g. from suppressed notification replies)
+                    guard !response.isEmpty else { continue }
                     var outputData = response
                     outputData.append(UInt8(ascii: "\n"))
                     stdout.write(outputData)

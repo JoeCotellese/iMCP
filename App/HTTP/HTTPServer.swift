@@ -58,25 +58,53 @@ actor HTTPMCPServer {
             var body = request.body
             guard let bodyBuffer = try? await body.collect(upTo: 10 * 1024 * 1024) else {
                 log.error("Failed to read request body")
-                return Response(
-                    status: .badRequest,
-                    headers: [.contentType: "application/json"],
-                    body: .init(byteBuffer: ByteBuffer(string: #"{"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"},"id":null}"#))
-                )
+                // Cannot parse request id, return HTTP error only (no JSON-RPC body)
+                return Response(status: .badRequest)
             }
 
             let bodyData = Data(buffer: bodyBuffer)
 
             guard let bodyString = String(data: bodyData, encoding: .utf8) else {
                 log.error("Invalid UTF-8 in request body")
-                return Response(
-                    status: .badRequest,
-                    headers: [.contentType: "application/json"],
-                    body: .init(byteBuffer: ByteBuffer(string: #"{"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error: invalid UTF-8"},"id":null}"#))
-                )
+                // Cannot parse request id, return HTTP error only (no JSON-RPC body)
+                return Response(status: .badRequest)
             }
 
             log.debug("Received MCP request: \(bodyString.prefix(200))...")
+
+            // Extract the request id for use in error responses.
+            // Per JSON-RPC 2.0, error responses MUST include the same id as the request.
+            // If the request has no id (notification), we must not send an error response.
+            let requestJSON = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any]
+            let requestId = requestJSON?["id"]
+
+            /// Build a JSON-RPC error response using the request's id.
+            /// Returns nil if the request had no id (notification), since notifications
+            /// must never receive a response per JSON-RPC 2.0.
+            func makeErrorResponse(code: Int, message: String, status: HTTPResponse.Status) -> Response {
+                // Only send JSON-RPC error responses for requests (which have an id).
+                guard let id = requestId, !(id is NSNull) else {
+                    log.debug("Suppressing error response for request with no valid id (notification or parse failure)")
+                    return Response(status: status)
+                }
+
+                let idJson: String
+                if let intId = id as? Int {
+                    idJson = "\(intId)"
+                } else if let strId = id as? String {
+                    idJson = "\"\(strId)\""
+                } else {
+                    // Unrecognized id type — don't send a JSON-RPC response
+                    return Response(status: status)
+                }
+
+                let body = #"{"jsonrpc":"2.0","error":{"code":\#(code),"message":"\#(message)"},"id":\#(idJson)}"#
+                return Response(
+                    status: status,
+                    headers: [.contentType: "application/json"],
+                    body: .init(byteBuffer: ByteBuffer(string: body))
+                )
+            }
 
             // Get client identifier from header or generate one
             let clientID = request.headers[.init("X-MCP-Client-ID")!] ?? "http-client"
@@ -101,31 +129,15 @@ actor HTTPMCPServer {
                         body: .init(byteBuffer: ByteBuffer(string: #"{"status":"pending_approval"}"#))
                     )
                 case .parseError(let message):
-                    return Response(
-                        status: .badRequest,
-                        headers: [.contentType: "application/json"],
-                        body: .init(byteBuffer: ByteBuffer(string: #"{"jsonrpc":"2.0","error":{"code":-32700,"message":"\#(message)"},"id":null}"#))
-                    )
+                    return makeErrorResponse(code: -32700, message: message, status: .badRequest)
                 case .methodNotFound(let method):
-                    return Response(
-                        status: .ok,
-                        headers: [.contentType: "application/json"],
-                        body: .init(byteBuffer: ByteBuffer(string: #"{"jsonrpc":"2.0","error":{"code":-32601,"message":"Method not found: \#(method)"},"id":null}"#))
-                    )
+                    return makeErrorResponse(code: -32601, message: "Method not found: \(method)", status: .ok)
                 case .internalError(let message):
-                    return Response(
-                        status: .internalServerError,
-                        headers: [.contentType: "application/json"],
-                        body: .init(byteBuffer: ByteBuffer(string: #"{"jsonrpc":"2.0","error":{"code":-32603,"message":"\#(message)"},"id":null}"#))
-                    )
+                    return makeErrorResponse(code: -32603, message: message, status: .internalServerError)
                 }
             } catch {
                 log.error("Error handling MCP request: \(error)")
-                return Response(
-                    status: .internalServerError,
-                    headers: [.contentType: "application/json"],
-                    body: .init(byteBuffer: ByteBuffer(string: #"{"jsonrpc":"2.0","error":{"code":-32603,"message":"Internal error"},"id":null}"#))
-                )
+                return makeErrorResponse(code: -32603, message: "Internal error", status: .internalServerError)
             }
         }
 
