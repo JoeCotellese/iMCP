@@ -117,9 +117,10 @@ actor MCPRequestHandler {
             return try await handleInitialize(id: id, params: params, clientID: clientID)
 
         case "initialized", _ where method.hasPrefix("notifications/"):
-            // Notifications don't require a JSON-RPC response, but the HTTP
-            // transport needs a body to avoid empty-response errors in the CLI.
-            return makeSuccessResponse(id: id, result: [:])
+            // Notifications don't require a JSON-RPC response per the spec.
+            // Return a bare JSON-RPC object without "result" so the CLI filter
+            // won't forward it to stdout (MCP clients reject responses without a valid id).
+            return #"{"jsonrpc":"2.0"}"#
 
         case "ping":
             return makeSuccessResponse(id: id, result: [:])
@@ -190,7 +191,7 @@ actor MCPRequestHandler {
 
         // Return server capabilities
         let result: [String: Any] = [
-            "protocolVersion": "2024-11-05",
+            "protocolVersion": "2025-06-18",
             "serverInfo": [
                 "name": serverName,
                 "version": serverVersion

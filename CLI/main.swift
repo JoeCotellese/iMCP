@@ -437,13 +437,25 @@ actor StdioProxy {
                     // Remove processed message from buffer
                     networkToStdoutBuffer = networkToStdoutBuffer[(newlineIndex + 1)...]
 
-                    // Filter out JSON-RPC messages with null id — MCP clients reject these.
-                    // Per JSON-RPC 2.0, id must be a String or Number in responses.
+                    // Only forward valid JSON-RPC messages to the MCP client.
+                    // Valid messages are: requests/notifications (have "method"),
+                    // or responses (have "result"/"error" with a string/number "id").
+                    // Anything else (e.g. notification acks from the app) is dropped.
                     if let json = try? JSONSerialization.jsonObject(with: Data(messageData)) as? [String: Any],
-                       json["jsonrpc"] != nil,
-                       let idValue = json["id"], idValue is NSNull {
-                        await log.debug("Dropping JSON-RPC message with null id to prevent client validation error")
-                        continue
+                       json["jsonrpc"] != nil {
+                        let hasMethod = json["method"] is String
+                        let isResponse = json["result"] != nil || json["error"] != nil
+                        let hasValidId: Bool = {
+                            guard let id = json["id"] else { return false }
+                            if id is NSNull { return false }
+                            // JSONSerialization returns String, Int, or Double for valid id values
+                            return id is String || id is Int || id is Double
+                        }()
+
+                        if !hasMethod && !(isResponse && hasValidId) {
+                            await log.debug("Dropping non-forwardable JSON-RPC message (no method, or response without valid id)")
+                            continue
+                        }
                     }
 
                     // Write complete message to stdout
@@ -710,8 +722,14 @@ actor HTTPMCPService: Service {
                     return json["id"]
                 }()
 
+                // Per JSON-RPC 2.0, notifications (no id, or null id) must never
+                // receive a response. Send the message to the app for processing
+                // but don't forward anything back to stdout.
+                let isNotification = requestId == nil || requestId is NSNull
+
                 do {
                     let response = try await sendRequest(Data(messageData))
+                    if isNotification { continue }
                     // Skip empty responses (e.g. from suppressed notification replies)
                     guard !response.isEmpty else { continue }
                     var outputData = response
@@ -907,9 +925,18 @@ enum ConfigError: Swift.Error {
 }
 
 // Use config-based service that reads transport setting from app
+// Treat normal return from run() (e.g. stdin EOF) as a graceful shutdown
+// instead of the default .cancelGroup, which surfaces as a fatal
+// "A service has finished unexpectedly" error.
 let lifecycle = ServiceGroup(
     configuration: .init(
-        services: [ConfigBasedMCPService()],
+        services: [
+            .init(
+                service: ConfigBasedMCPService(),
+                successTerminationBehavior: .gracefullyShutdownGroup,
+                failureTerminationBehavior: .gracefullyShutdownGroup
+            )
+        ],
         logger: log
     )
 )
