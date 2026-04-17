@@ -448,6 +448,8 @@ actor StdioProxy {
                         let hasValidId: Bool = {
                             guard let id = json["id"] else { return false }
                             if id is NSNull { return false }
+                            // Reject booleans first — NSNumber booleans satisfy is Int / is Double.
+                            if id is Bool { return false }
                             // JSONSerialization returns String, Int, or Double for valid id values
                             return id is String || id is Int || id is Double
                         }()
@@ -739,17 +741,18 @@ actor HTTPMCPService: Service {
                     await log.error("HTTP request failed: \(error)")
                     // Only send error responses for requests (which have an id).
                     // Notifications (no id) must never receive a response per JSON-RPC 2.0.
-                    if let id = requestId {
-                        let idJson: String
-                        if let intId = id as? Int {
-                            idJson = "\(intId)"
-                        } else if let strId = id as? String {
-                            idJson = "\"\(strId)\""
-                        } else {
-                            idJson = "0"
-                        }
-                        let errorResponse = #"{"jsonrpc":"2.0","error":{"code":-32603,"message":"HTTP error: \#(error)"},"id":\#(idJson)}"#
-                        if var outputData = errorResponse.data(using: .utf8) {
+                    // Build the response via JSONSerialization to ensure correct
+                    // escaping of the id and a safe static message (error details
+                    // stay in logs — never echo them to the client).
+                    if let id = requestId, !(id is NSNull), !(id is Bool),
+                       (id is String || id is Int || id is Double) {
+                        let payload: [String: Any] = [
+                            "jsonrpc": "2.0",
+                            "error": ["code": -32603, "message": "HTTP error"],
+                            "id": id
+                        ]
+                        if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.withoutEscapingSlashes]) {
+                            var outputData = data
                             outputData.append(UInt8(ascii: "\n"))
                             stdout.write(outputData)
                         }

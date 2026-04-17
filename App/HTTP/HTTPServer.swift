@@ -83,26 +83,31 @@ actor HTTPMCPServer {
             /// must never receive a response per JSON-RPC 2.0.
             func makeErrorResponse(code: Int, message: String, status: HTTPResponse.Status) -> Response {
                 // Only send JSON-RPC error responses for requests (which have an id).
-                guard let id = requestId, !(id is NSNull) else {
+                // Reject bools explicitly — NSNumber booleans satisfy is Int.
+                guard let id = requestId,
+                      !(id is NSNull),
+                      !(id is Bool),
+                      (id is String || id is Int || id is Double)
+                else {
                     log.debug("Suppressing error response for request with no valid id (notification or parse failure)")
                     return Response(status: status)
                 }
 
-                let idJson: String
-                if let intId = id as? Int {
-                    idJson = "\(intId)"
-                } else if let strId = id as? String {
-                    idJson = "\"\(strId)\""
-                } else {
-                    // Unrecognized id type — don't send a JSON-RPC response
+                // Serialize via JSONSerialization so the id and message are
+                // properly escaped (messages may contain quotes, backslashes,
+                // or control characters from parser/handler errors).
+                let payload: [String: Any] = [
+                    "jsonrpc": "2.0",
+                    "error": ["code": code, "message": message],
+                    "id": id
+                ]
+                guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.withoutEscapingSlashes]) else {
                     return Response(status: status)
                 }
-
-                let body = #"{"jsonrpc":"2.0","error":{"code":\#(code),"message":"\#(message)"},"id":\#(idJson)}"#
                 return Response(
                     status: status,
                     headers: [.contentType: "application/json"],
-                    body: .init(byteBuffer: ByteBuffer(string: body))
+                    body: .init(byteBuffer: ByteBuffer(data: data))
                 )
             }
 
