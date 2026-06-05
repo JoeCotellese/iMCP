@@ -15,6 +15,8 @@ import class Foundation.URLResponse
 import class Foundation.HTTPURLResponse
 import class Foundation.FileManager
 import class Foundation.JSONDecoder
+import class Foundation.JSONSerialization
+import class Foundation.NSNull
 
 var log = Logger(label: "me.mattt.iMCP.server") { StreamLogHandler.standardError(label: $0) }
 #if DEBUG
@@ -435,6 +437,29 @@ actor StdioProxy {
                     // Remove processed message from buffer
                     networkToStdoutBuffer = networkToStdoutBuffer[(newlineIndex + 1)...]
 
+                    // Only forward valid JSON-RPC messages to the MCP client.
+                    // Valid messages are: requests/notifications (have "method"),
+                    // or responses (have "result"/"error" with a string/number "id").
+                    // Anything else (e.g. notification acks from the app) is dropped.
+                    if let json = try? JSONSerialization.jsonObject(with: Data(messageData)) as? [String: Any],
+                       json["jsonrpc"] != nil {
+                        let hasMethod = json["method"] is String
+                        let isResponse = json["result"] != nil || json["error"] != nil
+                        let hasValidId: Bool = {
+                            guard let id = json["id"] else { return false }
+                            if id is NSNull { return false }
+                            // Reject booleans first — NSNumber booleans satisfy is Int / is Double.
+                            if id is Bool { return false }
+                            // JSONSerialization returns String, Int, or Double for valid id values
+                            return id is String || id is Int || id is Double
+                        }()
+
+                        if !hasMethod && !(isResponse && hasValidId) {
+                            await log.debug("Dropping non-forwardable JSON-RPC message (no method, or response without valid id)")
+                            continue
+                        }
+                    }
+
                     // Write complete message to stdout
                     var remainingDataToWrite = messageWithNewline
                     while !remainingDataToWrite.isEmpty {
@@ -691,18 +716,46 @@ actor HTTPMCPService: Service {
 
                 guard !messageData.isEmpty else { continue }
 
+                // Parse the request to extract the id (needed for error responses)
+                let requestId: Any? = {
+                    guard let json = try? JSONSerialization.jsonObject(with: Data(messageData)) as? [String: Any] else {
+                        return nil
+                    }
+                    return json["id"]
+                }()
+
+                // Per JSON-RPC 2.0, notifications (no id, or null id) must never
+                // receive a response. Send the message to the app for processing
+                // but don't forward anything back to stdout.
+                let isNotification = requestId == nil || requestId is NSNull
+
                 do {
                     let response = try await sendRequest(Data(messageData))
+                    if isNotification { continue }
+                    // Skip empty responses (e.g. from suppressed notification replies)
+                    guard !response.isEmpty else { continue }
                     var outputData = response
                     outputData.append(UInt8(ascii: "\n"))
                     stdout.write(outputData)
                 } catch {
                     await log.error("HTTP request failed: \(error)")
-                    // Write error response to stdout
-                    let errorResponse = #"{"jsonrpc":"2.0","error":{"code":-32603,"message":"HTTP error"},"id":null}"#
-                    if var outputData = errorResponse.data(using: .utf8) {
-                        outputData.append(UInt8(ascii: "\n"))
-                        stdout.write(outputData)
+                    // Only send error responses for requests (which have an id).
+                    // Notifications (no id) must never receive a response per JSON-RPC 2.0.
+                    // Build the response via JSONSerialization to ensure correct
+                    // escaping of the id and a safe static message (error details
+                    // stay in logs — never echo them to the client).
+                    if let id = requestId, !(id is NSNull), !(id is Bool),
+                       (id is String || id is Int || id is Double) {
+                        let payload: [String: Any] = [
+                            "jsonrpc": "2.0",
+                            "error": ["code": -32603, "message": "HTTP error"],
+                            "id": id
+                        ]
+                        if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.withoutEscapingSlashes]) {
+                            var outputData = data
+                            outputData.append(UInt8(ascii: "\n"))
+                            stdout.write(outputData)
+                        }
                     }
                 }
             }
@@ -875,9 +928,18 @@ enum ConfigError: Swift.Error {
 }
 
 // Use config-based service that reads transport setting from app
+// Treat normal return from run() (e.g. stdin EOF) as a graceful shutdown
+// instead of the default .cancelGroup, which surfaces as a fatal
+// "A service has finished unexpectedly" error.
 let lifecycle = ServiceGroup(
     configuration: .init(
-        services: [ConfigBasedMCPService()],
+        services: [
+            .init(
+                service: ConfigBasedMCPService(),
+                successTerminationBehavior: .gracefullyShutdownGroup,
+                failureTerminationBehavior: .gracefullyShutdownGroup
+            )
+        ],
         logger: log
     )
 )
