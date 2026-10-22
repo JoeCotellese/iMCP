@@ -16,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "F8F44E6C2D59038D0075D79C"
-               BuildableName = "iMCP.app"
+               BuildableName = "Pontemac.app"
                BlueprintName = "iMCP"
                ReferencedContainer = "container:iMCP.xcodeproj">
             </BuildableReference>
@@ -30,7 +30,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "F8F44EB52D5908D00075D79C"
-               BuildableName = "imcp-server"
+               BuildableName = "pontemac-server"
                BlueprintName = "imcp-server"
                ReferencedContainer = "container:iMCP.xcodeproj">
             </BuildableReference>
@@ -85,7 +85,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "F8F44E6C2D59038D0075D79C"
-            BuildableName = "iMCP.app"
+            BuildableName = "Pontemac.app"
             BlueprintName = "iMCP"
             ReferencedContainer = "container:iMCP.xcodeproj">
          </BuildableReference>
@@ -102,7 +102,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "F8F44E6C2D59038D0075D79C"
-            BuildableName = "iMCP.app"
+            BuildableName = "Pontemac.app"
             BlueprintName = "iMCP"
             ReferencedContainer = "container:iMCP.xcodeproj">
          </BuildableReference>

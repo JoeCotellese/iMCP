@@ -15,7 +15,7 @@
 		F873F48D2D712BCF0035CD0A /* Ontology in Frameworks */ = {isa = PBXBuildFile; productRef = F873F48C2D712BCF0035CD0A /* Ontology */; };
 		F87796FC2E0764AE00328CC6 /* MenuBarExtraAccess in Frameworks */ = {isa = PBXBuildFile; productRef = F87796FB2E0764AE00328CC6 /* MenuBarExtraAccess */; };
 		F88358372D64A085000317CD /* Logging in Frameworks */ = {isa = PBXBuildFile; productRef = F88358362D64A085000317CD /* Logging */; };
-		F885C6B82D66079100963B25 /* imcp-server in Copy Executables */ = {isa = PBXBuildFile; fileRef = F8F44EB62D5908D00075D79C /* imcp-server */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		F885C6B82D66079100963B25 /* pontemac-server in Copy Executables */ = {isa = PBXBuildFile; fileRef = F8F44EB62D5908D00075D79C /* pontemac-server */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		F8A7DE3E2DCB76F700530587 /* MCP in Frameworks */ = {isa = PBXBuildFile; productRef = F8A7DE3D2DCB76F700530587 /* MCP */; };
 		F8B0000C2E9000A10000000C /* ReminderKitBridge in Frameworks */ = {isa = PBXBuildFile; productRef = F8B0000B2E9000A10000000B /* ReminderKitBridge */; };
 		F8CE997B2D591CF200C61CA2 /* MCP in Frameworks */ = {isa = PBXBuildFile; productRef = F8CE997A2D591CF200C61CA2 /* MCP */; };
@@ -33,7 +33,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 6;
 			files = (
-				F885C6B82D66079100963B25 /* imcp-server in Copy Executables */,
+				F885C6B82D66079100963B25 /* pontemac-server in Copy Executables */,
 			);
 			name = "Copy Executables";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -51,9 +51,9 @@
 
 /* Begin PBXFileReference section */
 		A1B2C3D4E5F6A7B8C9D0E1F2 /* Local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig; sourceTree = "<group>"; };
-		F8F44E6D2D59038D0075D79C /* iMCP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iMCP.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F8F44E6D2D59038D0075D79C /* Pontemac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Pontemac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F8C000012E9100A100000001 /* iMCPTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iMCPTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		F8F44EB62D5908D00075D79C /* imcp-server */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "imcp-server"; sourceTree = BUILT_PRODUCTS_DIR; };
+		F8F44EB62D5908D00075D79C /* pontemac-server */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "pontemac-server"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -150,8 +150,8 @@
 		F8F44E6E2D59038D0075D79C /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				F8F44E6D2D59038D0075D79C /* iMCP.app */,
-				F8F44EB62D5908D00075D79C /* imcp-server */,
+				F8F44E6D2D59038D0075D79C /* Pontemac.app */,
+				F8F44EB62D5908D00075D79C /* pontemac-server */,
 				F8C000012E9100A100000001 /* iMCPTests.xctest */,
 			);
 			name = Products;
@@ -191,7 +191,7 @@
 				F8B0000B2E9000A10000000B /* ReminderKitBridge */,
 			);
 			productName = iMCP;
-			productReference = F8F44E6D2D59038D0075D79C /* iMCP.app */;
+			productReference = F8F44E6D2D59038D0075D79C /* Pontemac.app */;
 			productType = "com.apple.product-type.application";
 		};
 		F8F44EB52D5908D00075D79C /* imcp-server */ = {
@@ -217,7 +217,7 @@
 				F825BDC02D9AD00E0063ADD7 /* UnixSignals */,
 			);
 			productName = "imcp-server";
-			productReference = F8F44EB62D5908D00075D79C /* imcp-server */;
+			productReference = F8F44EB62D5908D00075D79C /* pontemac-server */;
 			productType = "com.apple.product-type.tool";
 		};
 		F8C000042E9100A100000004 /* iMCPTests */ = {
@@ -466,7 +466,6 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 8;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = 7F4L3QVJ42;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
@@ -477,12 +476,12 @@
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = App/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = iMCP;
+				INFOPLIST_KEY_CFBundleDisplayName = Pontemac;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "${PRODUCT_NAME} needs access to the camera to take pictures for the MCP server.";
 				INFOPLIST_KEY_NSContactsUsageDescription = "${PRODUCT_NAME} needs access to provide contact information to the MCP server.";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2025 Loopwork Limited. All rights reserved.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 Joe Cotellese";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "${PRODUCT_NAME} uses the local network to connect to the MCP server.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "${PRODUCT_NAME} needs access to provide location information to the MCP server.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "${PRODUCT_NAME} needs access to provide location information to the MCP server.";
@@ -502,8 +501,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.1;
 				MARKETING_VERSION = 1.4.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.joecotellese.pontemac;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = Pontemac;
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
 				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
 				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
@@ -531,7 +529,6 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 8;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = 7F4L3QVJ42;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
@@ -548,12 +545,12 @@
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = App/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = iMCP;
+				INFOPLIST_KEY_CFBundleDisplayName = Pontemac;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "${PRODUCT_NAME} needs access to the camera to take pictures for the MCP server.";
 				INFOPLIST_KEY_NSContactsUsageDescription = "${PRODUCT_NAME} needs access to provide contact information to the MCP server.";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2025 Loopwork Limited. All rights reserved.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 Joe Cotellese";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "${PRODUCT_NAME} uses the local network to connect to the MCP server.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "${PRODUCT_NAME} needs access to provide location information to the MCP server.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "${PRODUCT_NAME} needs access to provide location information to the MCP server.";
@@ -573,8 +570,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.1;
 				MARKETING_VERSION = 1.4.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.joecotellese.pontemac;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = Pontemac;
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = macosx;
 				SUPPORTS_MACCATALYST = NO;
@@ -593,7 +589,7 @@
 				DEAD_CODE_STRIPPING = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(IMCP_SERVER_BUNDLE_IDENTIFIER)";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "pontemac-server";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
@@ -609,7 +605,7 @@
 				DEAD_CODE_STRIPPING = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(IMCP_SERVER_BUNDLE_IDENTIFIER)";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "pontemac-server";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
@@ -624,7 +620,7 @@
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.1;
-				PRODUCT_BUNDLE_IDENTIFIER = me.cotellese.PontemacTests;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.joecotellese.pontemac-tests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.0;
@@ -639,7 +635,7 @@
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.1;
-				PRODUCT_BUNDLE_IDENTIFIER = me.cotellese.PontemacTests;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.joecotellese.pontemac-tests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.0;

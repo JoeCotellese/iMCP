@@ -846,7 +846,7 @@ actor ConfigBasedMCPService: Service {
         let home = FileManager.default.homeDirectoryForCurrentUser
         return [
             // Sandboxed container path (Pontemac is always sandboxed)
-            home.appendingPathComponent("Library/Containers/me.cotellese.Pontemac/Data/Library/Application Support/iMCP/transport.json")
+            home.appendingPathComponent("Library/Containers/com.joecotellese.pontemac/Data/Library/Application Support/iMCP/transport.json")
         ]
     }
 

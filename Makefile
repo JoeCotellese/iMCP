@@ -2,7 +2,7 @@
 
 PROJECT    := iMCP.xcodeproj
 SCHEME     := iMCP
-APP_NAME   := iMCP.app
+APP_NAME   := Pontemac.app
 INSTALL_DIR := /Applications
 
 # Resolve DerivedData build products directory
