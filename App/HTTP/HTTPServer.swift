@@ -152,32 +152,40 @@ actor HTTPMCPServer {
             let port = defaultStartPort + portOffset
             log.info("Attempting to start HTTP MCP server on localhost:\(port)")
 
+            // Bind outcome for this port: true once our own listener is up, false if
+            // runService fails or nothing happens in time. Polling /health cannot tell,
+            // because another app (upstream iMCP) may already answer on the port.
+            let (bindOutcomes, bindOutcome) = AsyncStream.makeStream(of: Bool.self)
+
             let app = Application(
                 router: router,
                 configuration: .init(
                     address: .hostname("127.0.0.1", port: port),
                     serverName: Bundle.main.name ?? "Pontemac"
                 ),
+                onServerRunning: { _ in bindOutcome.yield(true) },
                 logger: Logging.Logger(label: "me.mattt.iMCP.http")
             )
 
             // Start the server in a task
             let startTask = Task {
-                try await app.runService()
-            }
-
-            // Verify the server started by polling health endpoint
-            // Retry a few times to give the server time to bind
-            var serverReady = false
-            for attempt in 1...5 {
-                try await Task.sleep(for: .milliseconds(100))
-
-                if await isPortListening(port: port) {
-                    serverReady = true
-                    break
+                do {
+                    try await app.runService()
+                } catch {
+                    bindOutcome.yield(false)
+                    throw error
                 }
-                log.debug("Health check attempt \(attempt) on port \(port) - not ready yet")
+                bindOutcome.yield(false)
             }
+            let timeoutTask = Task {
+                try await Task.sleep(for: .seconds(2))
+                bindOutcome.yield(false)
+            }
+
+            var outcomes = bindOutcomes.makeAsyncIterator()
+            let serverReady = await outcomes.next() ?? false
+            timeoutTask.cancel()
+            bindOutcome.finish()
 
             if serverReady {
                 // Success - record the port and keep the server running
@@ -189,7 +197,7 @@ actor HTTPMCPServer {
             } else {
                 // Port didn't become available, cancel task and try next
                 startTask.cancel()
-                log.warning("Port \(port) did not become available after 500ms, trying next")
+                log.warning("Port \(port) did not bind, trying next")
                 lastError = HTTPServerError.portInUse(port)
             }
         }
@@ -197,23 +205,6 @@ actor HTTPMCPServer {
         // All ports failed
         log.error("Failed to bind HTTP server after trying \(maxPortAttempts) ports")
         throw lastError ?? HTTPServerError.allPortsInUse
-    }
-
-    /// Check if a port is listening by attempting a quick connection
-    private func isPortListening(port: Int) async -> Bool {
-        guard let url = URL(string: "http://127.0.0.1:\(port)/health") else { return false }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 0.5
-
-        do {
-            let (_, response) = try await URLSession.shared.data(for: request)
-            if let httpResponse = response as? HTTPURLResponse {
-                return httpResponse.statusCode == 200
-            }
-        } catch {
-            // Expected to fail if port not yet listening
-        }
-        return false
     }
 
     /// Stop the HTTP server
