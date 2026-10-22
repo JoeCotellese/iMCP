@@ -67,7 +67,8 @@ check_bonjour_type() {
     fi
 }
 
-# AC5 proxy: the About window carries the identifier and link contract.
+# AC5 proxy: the About window carries the identifier, text, and link contract.
+# Values are matched with their closing quote, so the /issues/new URL cannot stand in for the repository URL.
 check_about_contract() {
     local file="$1/App/Views/AboutWindow.swift" missing=()
     local want=(
@@ -78,18 +79,22 @@ check_about_contract() {
         'accessibilityIdentifier("aboutBasedOnLink")'
         'accessibilityIdentifier("aboutReportIssueButton")'
         'accessibilityIdentifier("aboutTrademarkText")'
-        'mailto:pontemac@cotellese.me'
-        'https://github.com/JoeCotellese/pontemac-mcp'
-        'https://github.com/JoeCotellese/pontemac-mcp/issues/new'
-        'https://github.com/mattt/iMCP'
-        'Mac is a trademark of Apple Inc., registered in the U.S. and other countries.'
+        '"pontemac@cotellese.me"'
+        '"mailto:pontemac@cotellese.me"'
+        '"Source on GitHub"'
+        '"https://github.com/JoeCotellese/pontemac-mcp"'
+        '"Based on iMCP by Mattt"'
+        '"https://github.com/mattt/iMCP"'
+        '"Report an Issue"'
+        '"https://github.com/JoeCotellese/pontemac-mcp/issues/new"'
+        '"Mac is a trademark of Apple Inc., registered in the U.S. and other countries."'
     )
     for w in "${want[@]}"; do grep -qF "$w" "$file" || missing+=("$w"); done
     if grep -qF 'github.com/mattt/iMCP/issues' "$file"; then missing+=("(still links mattt/iMCP/issues)"); fi
     [ ${#missing[@]} -eq 0 ] && pass about_contract || fail about_contract "missing: ${missing[*]}"
 }
 
-# AC11: no user-visible "iMCP" string literal in App/ or CLI/ outside the allowlist.
+# AC10: no user-visible "iMCP" string literal in App/ or CLI/ outside the allowlist.
 ALLOWLIST='me\.mattt\.iMCP|Application Support/iMCP|appendingPathComponent\("iMCP"\)|Based on iMCP|github\.com/mattt/iMCP'
 check_source_strings() {
     local hits
@@ -97,7 +102,7 @@ check_source_strings() {
     [ -z "$hits" ] && pass source_strings || fail source_strings "$(wc -l <<<"$hits" | tr -d ' ') literal(s), first: $(head -1 <<<"$hits")"
 }
 
-# AC12: MIT notice kept, fork notice added.
+# AC11: MIT notice kept, fork notice added.
 check_license() {
     local f="$1/LICENSE.md"
     if grep -qF "Copyright 2025 Mattt" "$f" && grep -qF "Copyright 2026 Joe Cotellese" "$f"; then
@@ -107,7 +112,7 @@ check_license() {
     fi
 }
 
-# AC13: the reminders e2e script targets Pontemac by default.
+# AC12: the reminders e2e script targets Pontemac by default.
 check_reminders_default() {
     grep -qF '/Applications/Pontemac.app/Contents/MacOS/pontemac-server' "$1/scripts/e2e-reminders.sh" \
         && pass reminders_default || fail reminders_default "e2e-reminders.sh default SERVER is not Pontemac"
@@ -116,7 +121,7 @@ check_reminders_default() {
 # Reads serverInfo.name from an initialize response on stdin.
 server_name() { jq -r 'select(.id == 1) | .result.serverInfo.name // empty' 2>/dev/null | head -1; }
 
-# AC7 and AC8: with upstream iMCP also running, pontemac-server reaches Pontemac.
+# AC7: with upstream iMCP also running, pontemac-server reaches Pontemac.
 check_server_info() {
     local app="$1" name
     [ -x "$app/Contents/MacOS/pontemac-server" ] || { fail server_info "pontemac-server not installed"; return; }
@@ -153,10 +158,10 @@ self_test() {
     cat >"$tmp/src/App/Views/AboutWindow.swift" <<'EOF'
 Text("Pontemac").accessibilityIdentifier("aboutAppNameText")
 Text(copyright).accessibilityIdentifier("aboutCopyrightText")
-Link("Email", destination: URL(string: "mailto:pontemac@cotellese.me")!).accessibilityIdentifier("aboutContactLink")
-Link("Source", destination: URL(string: "https://github.com/JoeCotellese/pontemac-mcp")!).accessibilityIdentifier("aboutRepositoryLink")
+Link("pontemac@cotellese.me", destination: URL(string: "mailto:pontemac@cotellese.me")!).accessibilityIdentifier("aboutContactLink")
+Link("Source on GitHub", destination: URL(string: "https://github.com/JoeCotellese/pontemac-mcp")!).accessibilityIdentifier("aboutRepositoryLink")
 Link("Based on iMCP by Mattt", destination: URL(string: "https://github.com/mattt/iMCP")!).accessibilityIdentifier("aboutBasedOnLink")
-Button("Report an Issue...") { open(URL(string: "https://github.com/JoeCotellese/pontemac-mcp/issues/new")!) }.accessibilityIdentifier("aboutReportIssueButton")
+Button("Report an Issue") { open(URL(string: "https://github.com/JoeCotellese/pontemac-mcp/issues/new")!) }.accessibilityIdentifier("aboutReportIssueButton")
 Text("Mac is a trademark of Apple Inc., registered in the U.S. and other countries.").accessibilityIdentifier("aboutTrademarkText")
 EOF
     printf 'let key = "me.mattt.iMCP.messagesDatabaseBookmark"\nlet t = "_pontemac._tcp"\n' >"$tmp/src/CLI/main.swift"
@@ -170,6 +175,22 @@ EOF
         printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"Pontemac","version":"1.4.0"}}}' | server_name)
     want_pass=$(grep -c '^PASS' <<<"$out" || true)
 
+    # Each About value fails on its own, including the repository URL with /issues/new still present.
+    local about="$tmp/src/App/Views/AboutWindow.swift" about_out="" m about_fail
+    cp "$about" "$tmp/About.good"
+    for m in 's#pontemac-mcp")!)#example.com")!)#' 's#Based on iMCP by Mattt#Based on iMCP#' 's#"Report an Issue"#"Report an Issue..."#'; do
+        cp "$tmp/About.good" "$about"
+        sed -i '' "$m" "$about"
+        about_out="$about_out
+$(check_about_contract "$tmp/src")"
+    done
+    cp "$tmp/About.good" "$about"
+    printf 'Link("Report", destination: URL(string: "https://github.com/mattt/iMCP/issues")!)\n' >>"$about"
+    about_out="$about_out
+$(check_about_contract "$tmp/src")"
+    cp "$tmp/About.good" "$about"
+    about_fail=$(grep -c '^FAIL about_contract' <<<"$about_out" || true)
+
     printf 'Text("Connected to iMCP")\nlet t = "_mcp._tcp"\n' >>"$tmp/src/CLI/main.swift"
     sed -i '' 's/aboutTrademarkText/x/' "$tmp/src/App/Views/AboutWindow.swift"
     printf 'Copyright 2025 Mattt\n' >"$tmp/src/LICENSE.md"
@@ -181,12 +202,12 @@ $(check_bundle_layout "$bad"; check_bundle_id "$bad"; check_info_plist "$bad"; c
         printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"iMCP","version":"1.4.0"}}}' | server_name)"
     want_fail=$(grep -c '^FAIL' <<<"$out" || true)
 
-    if [ "$want_pass" -eq 9 ] && [ "$want_fail" -eq 9 ] && grep -qx Pontemac <<<"$out" && grep -qx iMCP <<<"$out"; then
-        echo "SELF-TEST PASS (9 positive, 9 negative, serverInfo parsed both ways)"
+    if [ "$want_pass" -eq 9 ] && [ "$want_fail" -eq 9 ] && [ "$about_fail" -eq 4 ] && grep -qx Pontemac <<<"$out" && grep -qx iMCP <<<"$out"; then
+        echo "SELF-TEST PASS (9 positive, 9 negative, 4 About mutations, serverInfo parsed both ways)"
         FAILURES=0
     else
-        echo "$out"
-        echo "SELF-TEST FAIL (positive passes: $want_pass/9, negative fails: $want_fail/9)"
+        echo "$out$about_out"
+        echo "SELF-TEST FAIL (positive passes: $want_pass/9, negative fails: $want_fail/9, About mutations caught: $about_fail/4)"
         FAILURES=1
     fi
 }
