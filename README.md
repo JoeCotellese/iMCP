@@ -1,10 +1,10 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="Assets/hero-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="Assets/hero-light.svg">
-  <img alt="iMCP">
+  <img alt="Pontemac">
 </picture>
 
-iMCP is a macOS app for connecting your digital life with AI.
+Pontemac is a macOS app for connecting your digital life with AI.
 It works with [Claude Desktop][claude-app]
 and a [growing list of clients][mcp-clients] that support the
 [Model Context Protocol (MCP)][mcp].
@@ -74,24 +74,23 @@ and a [growing list of clients][mcp-clients] that support the
 
 ### Download and open the app
 
-First, [download the iMCP app](https://iMCP.app/download)
-(requires macOS 15.3 or later).
+Download the latest DMG from
+[GitHub Releases](https://github.com/JoeCotellese/pontemac-mcp/releases)
+(requires macOS 15.3 or later),
+or build it yourself with `make install`.
 
-Or, if you have [Homebrew](https://brew.sh) installed,
-you can run the following command:
+Pontemac is distributed only through GitHub.
+It calls Apple's private ReminderKit framework,
+so it can't ship on the App Store.
 
-```console
-brew install --cask mattt/tap/iMCP
-```
-
-<img align="right" width="344" src="/Assets/imcp-screenshot-first-launch.png" alt="Screenshot of iMCP on first launch" />
+<img align="right" width="344" src="/Assets/imcp-screenshot-first-launch.png" alt="Screenshot of Pontemac on first launch" />
 
 When you open the app,
 you'll see a
 <img style="display: inline" width="20" height="16" src="/Assets/icon.svg" />
 icon in your menu bar.
 
-Clicking on this icon reveals the iMCP menu,
+Clicking on this icon reveals the Pontemac menu,
 which displays all available services.
 Initially, all services will appear in gray,
 indicating they're inactive.
@@ -107,17 +106,17 @@ and ready to connect with MCP-compatible clients.
 
 To activate a service, click on its icon.
 The system will prompt you with a permission dialog.
-For example, when activating Calendar access, you'll see a dialog asking `"iMCP" Would Like Full Access to Your Calendar`.
+For example, when activating Calendar access, you'll see a dialog asking `"Pontemac" Would Like Full Access to Your Calendar`.
 Click <kbd>Allow Full Access</kbd> to continue.
 
 > [!IMPORTANT]
-> iMCP **does not** collect or store any of your data.
+> Pontemac **does not** collect or store any of your data.
 > Clients like Claude Desktop _do_ send
 > your data off device as part of tool calls.
 
 <br clear="all">
 
-<img align="right" width="344" src="/Assets/imcp-screenshot-all-services-active.png" alt="Screenshot of iMCP with all services enabled" />
+<img align="right" width="344" src="/Assets/imcp-screenshot-all-services-active.png" alt="Screenshot of Pontemac with all services enabled" />
 
 Once activated,
 each service icons goes from gray to their distinctive colors —
@@ -125,7 +124,7 @@ red for Calendar, green for Messages, blue for Location, and so on.
 
 Repeat this process for all of the capabilities you'd like to enable.
 These permissions follow Apple's standard security model,
-giving you complete control over what information iMCP can access.
+giving you complete control over what information Pontemac can access.
 
 <!-- <br clear="all"> -->
 
@@ -146,12 +145,12 @@ This will create a configuration file at
 
 <br/>
 
-To connect iMCP to Claude Desktop,
+To connect Pontemac to Claude Desktop,
 click <img style="display: inline" width="20" height="16" src="/Assets/icon.svg" />
 \> "Configure Claude Desktop".
 
 This will add or update the MCP server configuration to use the
-`imcp-server` executable bundled in the application.
+`pontemac-server` executable bundled in the application.
 Other MCP server configurations in the file will be preserved.
 
 <details>
@@ -165,8 +164,8 @@ and enter the following:
 ```json
 {
   "mcpServers": {
-    "iMCP": {
-      "command": "{paste iMCP server command}"
+    "Pontemac": {
+      "command": "{paste Pontemac server command}"
     }
   }
 }
@@ -176,7 +175,7 @@ and enter the following:
 
 <img align="right" width="372" src="/Assets/imcp-screenshot-approve-connection.png" />
 
-### Call iMCP tools from Claude Desktop
+### Call Pontemac tools from Claude Desktop
 
 Quit and reopen the Claude Desktop app.
 You'll be prompted to approve the connection.
@@ -186,7 +185,7 @@ You'll be prompted to approve the connection.
 After approving the connection,
 you should now see 🔨12 in the bottom right corner of your chat box.
 Click on that to see a list of all the tools made available to Claude
-by iMCP.
+by Pontemac.
 
 <p align="center">
   <img width="694" src="/Assets/claude-desktop-screenshot-tools-enabled.png" alt="Screenshot of Claude Desktop with tools enabled" />
@@ -209,12 +208,12 @@ without requiring you to manually share this data during your conversation.
 
 ### App & CLI
 
-iMCP is a macOS app that bundles a command-line executable, `imcp-server`.
+Pontemac is a macOS app that bundles a command-line executable, `pontemac-server`.
 
-- [`iMCP.app`](/App/) provides UI for configuring services and — most importantly —
+- [`Pontemac.app`](/App/) provides UI for configuring services and — most importantly —
   a means of interacting with macOS system permissions,
   so that it can access Contacts, Calendar, and other information.
-- [`imcp-server`](/CLI/) provides an MCP server that
+- [`pontemac-server`](/CLI/) provides an MCP server that
   uses standard input/output for communication
   ([stdio transport][mcp-transports]).
 
@@ -241,7 +240,7 @@ Apple doesn't provide public APIs for accessing your messages.
 However, the Messages app on macOS stores data in a SQLite database located at
 `~/Library/Messages/chat.db`.
 
-iMCP runs in [App Sandbox][app-sandbox],
+Pontemac runs in [App Sandbox][app-sandbox],
 which limits its access to user data and system resources.
 When you go to enable the Messages service,
 you'll be prompted to open the `chat.db` file through the standard file picker.
@@ -261,7 +260,7 @@ and [blog post about reverse-engineering `typedstream`][typedstream-blog-post].
 
 ### JSON-LD for Tool Results
 
-The tools provided by iMCP return results as
+The tools provided by Pontemac return results as
 [JSON-LD][json-ld] documents.
 For example,
 the `fetchContacts` tool uses the [Contacts framework][contacts-framework],
@@ -285,13 +284,13 @@ humans, AI, and conventional software alike.
 For this project, we created [Ontology][ontology]:
 a Swift package for working with structured data.
 It includes convenience initializers for types from Apple frameworks,
-such as those returned by iMCP tools.
+such as those returned by Pontemac tools.
 
 ## Debugging
 
 ### Using the MCP Inspector
 
-To debug interactions between iMCP and clients,
+To debug interactions between Pontemac and clients,
 you can use the [inspector tool](https://github.com/modelcontextprotocol/inspector)
 (requires Node.js):
 
@@ -299,14 +298,14 @@ you can use the [inspector tool](https://github.com/modelcontextprotocol/inspect
 2. Open a terminal and run the following commands:
 
    ```console
-   # Download and run inspector package on imcp-server
+   # Download and run inspector package on pontemac-server
    npx @modelcontextprotocol/inspector [paste-copied-command]
 
    # Open inspector web app running locally
    open http://127.0.0.1:6274
    ```
 
-Inspector lets you see all requests and responses between the client and the iMCP server,
+Inspector lets you see all requests and responses between the client and the Pontemac server,
 which is helpful for understanding how the protocol works.
 
 ### Using Companion
@@ -317,15 +316,15 @@ which is helpful for understanding how the protocol works.
 (requires macOS 15 or later).
 It gives you an easy way to browse and interact with
 a server's prompts, resources, and tools.
-Here's how to connect it to iMCP:
+Here's how to connect it to Pontemac:
 
 1. Click <img style="display: inline" width="20" height="16" src="/Assets/icon.svg" /> > "Copy server command to clipboard"
 2. [Download][companion-download] and open the Companion app
 3. Click the <kbd>+</kbd> button in the toolbar to add an MCP server
 4. Fill out the form:
-   - Enter "iMCP" as the name
+   - Enter "Pontemac" as the name
    - Select "STDIO" as the transport
-   - Paste the copied iMCP server command
+   - Paste the copied Pontemac server command
    - Click "Add Server"
 
 <br clear="all">
@@ -344,6 +343,13 @@ Here's how to connect it to iMCP:
   for reverse-engineering the `typedstream` format
   used by the Messages app.
 
+## Attribution
+
+Pontemac is a fork of [iMCP](https://github.com/mattt/iMCP) by Mattt,
+released under the MIT license.
+The name comes from the Italian *ponte* (bridge):
+the CLI bridges MCP stdio to the app.
+
 ## License
 
 This project is available under the MIT license.
@@ -352,6 +358,7 @@ See the LICENSE file for more info.
 ## Legal
 
 iMessage® is a registered trademark of Apple Inc.
+Mac is a trademark of Apple Inc., registered in the U.S. and other countries.
 This project is not affiliated with, endorsed, or sponsored by Apple Inc.
 
 [app-sandbox]: https://developer.apple.com/documentation/security/app-sandbox
