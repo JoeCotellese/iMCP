@@ -17,5 +17,6 @@ let package = Package(
             dependencies: ["ReminderKitBridge"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        .testTarget(name: "ReminderKitBridgeTests", dependencies: ["ReminderKitBridge"]),
     ]
 )
