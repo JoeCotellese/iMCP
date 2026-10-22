@@ -3,6 +3,7 @@ import Foundation
 import MCP
 import OSLog
 import Ontology
+import ReminderKitBridge
 
 private let log = Logger.service("reminders")
 
@@ -78,6 +79,7 @@ private func reminderToValue(_ reminder: EKReminder) -> Value {
 
 final class RemindersService: Service {
     private let eventStore = EKEventStore()
+    private let bridge = ReminderKitBridge()
 
     static let shared = RemindersService()
 
