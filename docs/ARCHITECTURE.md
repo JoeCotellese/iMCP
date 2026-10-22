@@ -66,6 +66,13 @@ iMCP/
 │   └── Extensions/                   # Framework extensions
 ├── CLI/
 │   └── main.swift                    # Stdio proxy (HTTP or Bonjour client)
+├── Packages/
+│   └── ReminderKitBridge/            # Private ReminderKit bridge (local Swift package)
+│       ├── Sources/ReminderKitBridge/  # Library linked into iMCP.app
+│       ├── Sources/rkprobe/          # Live probe executable
+│       └── Tests/                    # Integration tests (swift test)
+├── scripts/
+│   └── e2e-reminders.sh              # End-to-end tests against the installed app
 └── docs/
     └── ARCHITECTURE.md               # This file
 ```
@@ -109,6 +116,29 @@ Key actors:
 - `ConfigBasedMCPService` - Transport selection
 - `HTTPMCPService` - HTTP client with approval polling
 - `MCPService` / `StdioProxy` - Bonjour discovery and network-to-stdio proxy
+
+### ReminderKitBridge
+
+**Package:** `Packages/ReminderKitBridge`
+
+EventKit has no API for reminder flags (and later tags, subtasks, sections). Apple's private ReminderKit framework does, and a process with only the Reminders permission can write through it. The package depends on Foundation only; `App/Services/Reminders.swift` keeps the MCP tools and EventKit code and maps bridge results to `Value`.
+
+- `ReminderKitBridge` actor - dlopens the framework, guards every private selector with `responds(to:)`, and never throws: `apply(_:reminder:list:)` returns `ApplyResult { extras, warnings }`, `read(_:)` returns `ReadResult`
+- `Shims.swift` - `@objc` protocols for the private classes, `package` access so only `rkprobe` shares them
+- Identity: `EKReminder.calendarItemIdentifier` is the ReminderKit reminder UUID and `EKCalendar.calendarIdentifier` is the list UUID, so no title matching is needed
+
+Write flow for `reminders_create` and `reminders_update`:
+
+```
+arguments → EventKit fields ─→ eventStore.save(commit: true)
+          → ReminderKit extras ─→ bridge.apply (one REMSaveRequest)
+                                        │
+                                  re-read with a fresh REMStore
+                                        │
+response ← reminderToValue + extras + warnings (no rollback on ReminderKit failure)
+```
+
+Logs go to the `services.reminders` category, prefixed `[ReminderKit]`.
 
 ## Service Architecture
 
@@ -255,6 +285,7 @@ HTTP transport returns 202 while pending, CLI polls with 2-second intervals.
 | Ontology | Schema.org JSON-LD encoding |
 | Hummingbird | HTTP server framework |
 | Madrid | iMessage database reading |
+| ReminderKitBridge | Local package; private ReminderKit for reminder flags |
 
 ## Key Patterns
 

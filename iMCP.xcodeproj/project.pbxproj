@@ -10,6 +10,7 @@
 		F809556E2D7888920055B911 /* TypedStream in Frameworks */ = {isa = PBXBuildFile; productRef = F809556D2D7888920055B911 /* TypedStream */; };
 		F80955702D7888920055B911 /* iMessage in Frameworks */ = {isa = PBXBuildFile; productRef = F809556F2D7888920055B911 /* iMessage */; };
 		F810000C2E5700A10000000C /* Hummingbird in Frameworks */ = {isa = PBXBuildFile; productRef = F810000B2E5700A10000000B /* Hummingbird */; };
+		F8B0000C2E9000A10000000C /* ReminderKitBridge in Frameworks */ = {isa = PBXBuildFile; productRef = F8B0000B2E9000A10000000B /* ReminderKitBridge */; };
 		F825BDBF2D9AD00E0063ADD7 /* ServiceLifecycle in Frameworks */ = {isa = PBXBuildFile; productRef = F825BDBE2D9AD00E0063ADD7 /* ServiceLifecycle */; };
 		F825BDC12D9AD00E0063ADD7 /* UnixSignals in Frameworks */ = {isa = PBXBuildFile; productRef = F825BDC02D9AD00E0063ADD7 /* UnixSignals */; };
 		F873F48D2D712BCF0035CD0A /* Ontology in Frameworks */ = {isa = PBXBuildFile; productRef = F873F48C2D712BCF0035CD0A /* Ontology */; };
@@ -85,6 +86,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F810000C2E5700A10000000C /* Hummingbird in Frameworks */,
+				F8B0000C2E9000A10000000C /* ReminderKitBridge in Frameworks */,
 				F809556E2D7888920055B911 /* TypedStream in Frameworks */,
 				F87796FC2E0764AE00328CC6 /* MenuBarExtraAccess in Frameworks */,
 				F873F48D2D712BCF0035CD0A /* Ontology in Frameworks */,
@@ -161,6 +163,7 @@
 				F8D8C48D2DCE0E6800369E5C /* JSONSchema */,
 				F87796FB2E0764AE00328CC6 /* MenuBarExtraAccess */,
 				F810000B2E5700A10000000B /* Hummingbird */,
+				F8B0000B2E9000A10000000B /* ReminderKitBridge */,
 			);
 			productName = iMCP;
 			productReference = F8F44E6D2D59038D0075D79C /* iMCP.app */;
@@ -228,6 +231,7 @@
 				F8D8C48C2DCE0E6800369E5C /* XCRemoteSwiftPackageReference "JSONSchema" */,
 				F87796FA2E0764AE00328CC6 /* XCRemoteSwiftPackageReference "MenuBarExtraAccess" */,
 				F810000A2E5700A10000000A /* XCRemoteSwiftPackageReference "hummingbird" */,
+				F8B0000A2E9000A10000000A /* XCLocalSwiftPackageReference "Packages/ReminderKitBridge" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F8F44E6E2D59038D0075D79C /* Products */;
@@ -574,6 +578,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		F8B0000A2E9000A10000000A /* XCLocalSwiftPackageReference "Packages/ReminderKitBridge" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/ReminderKitBridge;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		F809556C2D7888920055B911 /* XCRemoteSwiftPackageReference "madrid" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -627,8 +638,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/modelcontextprotocol/swift-sdk";
 			requirement = {
-				kind = revision;
-				revision = 106167bad12cd8d004b0cbfcec8211c5408794d8;
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.12.0;
 			};
 		};
 		F8D8C48C2DCE0E6800369E5C /* XCRemoteSwiftPackageReference "JSONSchema" */ = {
@@ -707,6 +718,11 @@
 		F8F44E9C2D5903F70075D79C /* MCP */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = MCP;
+		};
+		F8B0000B2E9000A10000000B /* ReminderKitBridge */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F8B0000A2E9000A10000000A /* XCLocalSwiftPackageReference "Packages/ReminderKitBridge" */;
+			productName = ReminderKitBridge;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

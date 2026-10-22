@@ -1,10 +1,44 @@
+// ABOUTME: MCP tools for Apple Reminders: lists, fetch, get, create, update, complete and delete.
+// ABOUTME: EventKit does the saves; ReminderKitBridge adds the fields EventKit cannot reach, such as flagged.
+
 import EventKit
 import Foundation
 import MCP
 import OSLog
 import Ontology
+import ReminderKitBridge
 
 private let log = Logger.service("reminders")
+
+/// Reads a boolean argument sent as a bool, an int (JSON false=0, true=1), or a "true"/"false" string
+private func boolArgument(_ value: Value?) -> Bool? {
+    switch value {
+    case .bool(let value):
+        return value
+    case .int(let value):
+        return value != 0
+    case .string(let str):
+        switch str.lowercased() {
+        case "true": return true
+        case "false": return false
+        default: return nil
+        }
+    default:
+        return nil
+    }
+}
+
+/// Adds ReminderKit extras, and any warnings about what did not apply, to a reminder's response object
+private func merging(_ value: Value, extras: ReminderExtras?, warnings: [String]) -> Value {
+    guard case .object(var dict) = value else { return value }
+    if let flagged = extras?.flagged {
+        dict["flagged"] = .bool(flagged)
+    }
+    if !warnings.isEmpty {
+        dict["warnings"] = .array(warnings.map { .string($0) })
+    }
+    return .object(dict)
+}
 
 /// Converts an EKReminder to a summary Value for list responses (reduces token usage)
 private func reminderToSummaryValue(_ reminder: EKReminder) -> Value {
@@ -78,6 +112,7 @@ private func reminderToValue(_ reminder: EKReminder) -> Value {
 
 final class RemindersService: Service {
     private let eventStore = EKEventStore()
+    private let bridge = ReminderKitBridge()
 
     static let shared = RemindersService()
 
@@ -89,6 +124,21 @@ final class RemindersService: Service {
 
     func activate() async throws {
         try await eventStore.requestFullAccessToReminders()
+    }
+
+    /// Applies `edit` through ReminderKit after the EventKit save, then builds the response with extras merged in.
+    /// An empty edit only reads. A ReminderKit failure never rolls back the EventKit save; the response carries warnings.
+    private func value(for reminder: EKReminder, applying edit: ReminderEdit = ReminderEdit()) async -> Value {
+        let base = reminderToValue(reminder)
+        guard let reminderID = UUID(uuidString: reminder.calendarItemIdentifier),
+            let listID = UUID(uuidString: reminder.calendar.calendarIdentifier)
+        else {
+            log.warning("[ReminderKit] not a ReminderKit UUID: \(reminder.calendarItemIdentifier, privacy: .public)")
+            let warnings = edit.isEmpty ? [] : ["ReminderKit extras not applied: identifier is not a ReminderKit UUID"]
+            return merging(base, extras: nil, warnings: warnings)
+        }
+        let result = await bridge.apply(edit, reminder: reminderID, list: listID)
+        return merging(base, extras: result.extras, warnings: result.warnings)
     }
 
     var tools: [Tool] {
@@ -206,21 +256,7 @@ final class RemindersService: Service {
             // Handle bool, int (JSON false=0, true=1), and string representations
             let predicate: NSPredicate
             let completedArg = arguments["completed"]
-            let completedValue: Bool?
-            switch completedArg {
-            case .bool(let value):
-                completedValue = value
-            case .int(let value):
-                completedValue = (value != 0)
-            case .string(let str):
-                switch str.lowercased() {
-                case "true": completedValue = true
-                case "false": completedValue = false
-                default: completedValue = nil
-                }
-            default:
-                completedValue = nil
-            }
+            let completedValue = boolArgument(completedArg)
 
             log.debug("reminders_fetch: completed arg=\(String(describing: completedArg)), parsed=\(String(describing: completedValue))")
 
@@ -262,7 +298,14 @@ final class RemindersService: Service {
                 }
             }
 
-            return filteredReminders.map { reminderToSummaryValue($0) }
+            // One ReminderKit read for every reminder; read warnings stay in the log so the response remains an array
+            let readBack = await self.bridge.read(
+                filteredReminders.compactMap { UUID(uuidString: $0.calendarItemIdentifier) })
+
+            return filteredReminders.map { reminder in
+                let extras = UUID(uuidString: reminder.calendarItemIdentifier).flatMap { readBack.extras[$0] }
+                return merging(reminderToSummaryValue(reminder), extras: extras, warnings: [])
+            }
         }
 
         Tool(
@@ -287,6 +330,9 @@ final class RemindersService: Service {
                     "alarms": .array(
                         description: "Minutes before due date to set alarms",
                         items: .integer()
+                    ),
+                    "flagged": .boolean(
+                        description: "If true, the reminder appears in the Flagged list"
                     ),
                 ],
                 required: ["title"],
@@ -357,7 +403,7 @@ final class RemindersService: Service {
             // Save the reminder
             try self.eventStore.save(reminder, commit: true)
 
-            return reminderToValue(reminder)
+            return await self.value(for: reminder, applying: ReminderEdit(flagged: boolArgument(arguments["flagged"])))
         }
 
         Tool(
@@ -404,7 +450,7 @@ final class RemindersService: Service {
                 )
             }
 
-            return reminderToValue(reminder)
+            return await self.value(for: reminder)
         }
 
         Tool(
@@ -500,6 +546,9 @@ final class RemindersService: Service {
                     "alarms": .array(
                         description: "Replace alarms with new ones (minutes before due date)",
                         items: .integer()
+                    ),
+                    "flagged": .boolean(
+                        description: "Set to true to flag the reminder, false to unflag it"
                     )
                 ],
                 required: ["identifier"],
@@ -600,7 +649,7 @@ final class RemindersService: Service {
 
             try self.eventStore.save(reminder, commit: true)
 
-            return reminderToValue(reminder)
+            return await self.value(for: reminder, applying: ReminderEdit(flagged: boolArgument(arguments["flagged"])))
         }
 
         Tool(
