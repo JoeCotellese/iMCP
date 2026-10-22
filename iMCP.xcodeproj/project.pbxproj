@@ -68,6 +68,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Integrations/ClaudeDesktopConfigMerge.swift,
+				Views/MenuBarIcon.swift,
 			);
 			target = F8C000042E9100A100000004 /* iMCPTests */;
 		};
