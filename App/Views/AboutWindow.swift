@@ -111,7 +111,7 @@ struct AboutView: View {
     }
 }
 
-// prototype: fixture. /implement swaps it for real service calls.
+// Preview fixtures. The running app uses AboutContent.main, which reads the bundle.
 #Preview("About: typical") {
     AboutView(
         content: AboutContent(
