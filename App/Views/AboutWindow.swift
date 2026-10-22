@@ -45,6 +45,7 @@ struct AboutContent {
 
 struct AboutView: View {
     let content: AboutContent
+    @FocusState private var reportIssueFocused: Bool
 
     var body: some View {
         VStack(spacing: 20) {
@@ -65,7 +66,6 @@ struct AboutView: View {
 
                         if let version = content.version {
                             Text("Version \(version)")
-                                .foregroundStyle(.secondary)
                                 .textSelection(.enabled)
                         }
                     }
@@ -76,16 +76,16 @@ struct AboutView: View {
                             .accessibilityIdentifier("aboutContactLink")
 
                         Link("Source on GitHub", destination: AboutContent.repositoryURL)
-                            .accessibilityLabel("Source code on GitHub")
                             .accessibilityIdentifier("aboutRepositoryLink")
 
                         Link("Based on iMCP by Mattt", destination: AboutContent.upstreamURL)
                             .accessibilityIdentifier("aboutBasedOnLink")
                     }
 
-                    Button("Report an Issue…") {
+                    Button("Report an Issue") {
                         NSWorkspace.shared.open(AboutContent.reportIssueURL)
                     }
+                    .focused($reportIssueFocused)
                     .accessibilityIdentifier("aboutReportIssueButton")
                 }
                 .padding(.top, 12)
@@ -94,6 +94,8 @@ struct AboutView: View {
             VStack(spacing: 4) {
                 if let copyright = content.copyright {
                     Text(copyright)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("aboutCopyrightText")
                 }
                 Text(AboutContent.trademark)
@@ -102,10 +104,10 @@ struct AboutView: View {
                     .accessibilityIdentifier("aboutTrademarkText")
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
         }
         .frame(width: 400)
         .padding(24)
+        .defaultFocus($reportIssueFocused, true)
     }
 }
 
