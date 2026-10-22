@@ -95,7 +95,7 @@ check_about_contract() {
 }
 
 # AC10: no user-visible "iMCP" string literal in App/ or CLI/ outside the allowlist.
-ALLOWLIST='me\.mattt\.iMCP|Application Support/iMCP|appendingPathComponent\("iMCP"\)|Based on iMCP|github\.com/mattt/iMCP'
+ALLOWLIST='me\.mattt\.iMCP|Application Support/iMCP|appendingPathComponent\("iMCP"\)|Based on iMCP|github\.com/mattt/iMCP|legacyServerKey = "iMCP"'
 check_source_strings() {
     local hits
     hits=$(rg -n --glob '*.swift' --glob '*.plist' '"[^"]*iMCP[^"]*"' "$1/App" "$1/CLI" | rg -v '^\S+:\d+:\s*//' | rg -v "$ALLOWLIST" || true)
@@ -164,7 +164,7 @@ Link("Based on iMCP by Mattt", destination: URL(string: "https://github.com/matt
 Button("Report an Issue") { open(URL(string: "https://github.com/JoeCotellese/pontemac-mcp/issues/new")!) }.accessibilityIdentifier("aboutReportIssueButton")
 Text("Mac is a trademark of Apple Inc., registered in the U.S. and other countries.").accessibilityIdentifier("aboutTrademarkText")
 EOF
-    printf 'let key = "me.mattt.iMCP.messagesDatabaseBookmark"\nlet t = "_pontemac._tcp"\n' >"$tmp/src/CLI/main.swift"
+    printf 'let key = "me.mattt.iMCP.messagesDatabaseBookmark"\nlet t = "_pontemac._tcp"\nstatic let legacyServerKey = "iMCP"\n' >"$tmp/src/CLI/main.swift"
     printf 'Copyright 2026 Joe Cotellese\nCopyright 2025 Mattt (https://mat.tt)\n' >"$tmp/src/LICENSE.md"
     printf 'SERVER="${IMCP_SERVER:-/Applications/Pontemac.app/Contents/MacOS/pontemac-server}"\n' >"$tmp/src/scripts/e2e-reminders.sh"
 
@@ -191,6 +191,14 @@ $(check_about_contract "$tmp/src")"
     cp "$tmp/About.good" "$about"
     about_fail=$(grep -c '^FAIL about_contract' <<<"$about_out" || true)
 
+    # The legacy-key allowance covers only its own declaration, not other uses of the key.
+    local strings_out strings_fail
+    cp "$tmp/src/CLI/main.swift" "$tmp/main.good"
+    printf 'mcpServers["iMCP"] = value\n' >>"$tmp/src/CLI/main.swift"
+    strings_out=$(check_source_strings "$tmp/src")
+    cp "$tmp/main.good" "$tmp/src/CLI/main.swift"
+    strings_fail=$(grep -c '^FAIL source_strings' <<<"$strings_out" || true)
+
     printf 'Text("Connected to iMCP")\nlet t = "_mcp._tcp"\n' >>"$tmp/src/CLI/main.swift"
     sed -i '' 's/aboutTrademarkText/x/' "$tmp/src/App/Views/AboutWindow.swift"
     printf 'Copyright 2025 Mattt\n' >"$tmp/src/LICENSE.md"
@@ -202,12 +210,13 @@ $(check_bundle_layout "$bad"; check_bundle_id "$bad"; check_info_plist "$bad"; c
         printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"iMCP","version":"1.4.0"}}}' | server_name)"
     want_fail=$(grep -c '^FAIL' <<<"$out" || true)
 
-    if [ "$want_pass" -eq 9 ] && [ "$want_fail" -eq 9 ] && [ "$about_fail" -eq 4 ] && grep -qx Pontemac <<<"$out" && grep -qx iMCP <<<"$out"; then
-        echo "SELF-TEST PASS (9 positive, 9 negative, 4 About mutations, serverInfo parsed both ways)"
+    if [ "$want_pass" -eq 9 ] && [ "$want_fail" -eq 9 ] && [ "$about_fail" -eq 4 ] && [ "$strings_fail" -eq 1 ] && grep -qx Pontemac <<<"$out" && grep -qx iMCP <<<"$out"; then
+        echo "SELF-TEST PASS (9 positive, 9 negative, 4 About mutations, legacy key use caught, serverInfo parsed both ways)"
         FAILURES=0
     else
-        echo "$out$about_out"
-        echo "SELF-TEST FAIL (positive passes: $want_pass/9, negative fails: $want_fail/9, About mutations caught: $about_fail/4)"
+        echo "$out$about_out
+$strings_out"
+        echo "SELF-TEST FAIL (positive passes: $want_pass/9, negative fails: $want_fail/9, About mutations caught: $about_fail/4, legacy key use caught: $strings_fail/1)"
         FAILURES=1
     fi
 }
