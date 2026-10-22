@@ -23,7 +23,10 @@ public actor ReminderKitBridge {
         do {
             try load()
         } catch {
-            return ApplyResult(warnings: [warning(for: error, fields: edit.fieldNames, outcome: "not applied")])
+            let warning = edit.isEmpty
+                ? warning(for: error, fields: ReminderExtras.fieldNames, outcome: "not read")
+                : warning(for: error, fields: edit.fieldNames, outcome: "not applied")
+            return ApplyResult(warnings: [warning])
         }
         var warnings: [String] = []
         if !edit.isEmpty {

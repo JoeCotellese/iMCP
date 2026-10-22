@@ -40,4 +40,12 @@ private let testListName = "iMCP Tests"
         #expect(result.warnings.contains { $0.contains("ReminderKit unavailable") })
         #expect(result.extras.isEmpty)
     }
+
+    @Test func unavailableFrameworkReadOnlyApplyNamesReadFields() async {
+        let bridge = ReminderKitBridge(frameworkPath: "/nonexistent/ReminderKit.framework/ReminderKit")
+
+        let result = await bridge.apply(ReminderEdit(), reminder: UUID(), list: UUID())
+
+        #expect(result.warnings == ["ReminderKit unavailable: flagged not read"])
+    }
 }
