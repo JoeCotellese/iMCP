@@ -1,3 +1,6 @@
+// ABOUTME: Main orchestrator for iMCP: service registry, transport lifecycle, connection approval and trusted clients.
+// ABOUTME: Embeds the Bonjour network, per-connection MCP server and discovery actors.
+
 import AppKit
 import MCP
 import Network
