@@ -28,6 +28,9 @@ public struct ReminderExtras: Sendable, Hashable {
     }
 
     public var isEmpty: Bool { flagged == nil }
+
+    /// Names of every field a read returns, for warnings when a read fails.
+    static let fieldNames = ["flagged"]
 }
 
 /// Outcome of `ReminderKitBridge.apply`: the extras read back after the save, and what did not apply.
