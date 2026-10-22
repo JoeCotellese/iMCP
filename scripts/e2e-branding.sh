@@ -29,7 +29,7 @@ check_bundle_layout() {
 check_bundle_id() {
     local got
     got=$(plist "$1" CFBundleIdentifier || true)
-    [ "$got" = "me.cotellese.Pontemac" ] && pass bundle_id || fail bundle_id "CFBundleIdentifier is '$got'"
+    [ "$got" = "com.joecotellese.pontemac" ] && pass bundle_id || fail bundle_id "CFBundleIdentifier is '$got'"
 }
 
 # AC3: no Sparkle keys, copyright string.
@@ -144,7 +144,7 @@ self_test() {
     printf '#!/bin/sh\n' >"$good/Contents/MacOS/pontemac-server"
     chmod +x "$good/Contents/MacOS/pontemac-server"
     plutil -create xml1 "$good/Contents/Info.plist"
-    plutil -insert CFBundleIdentifier -string me.cotellese.Pontemac "$good/Contents/Info.plist"
+    plutil -insert CFBundleIdentifier -string com.joecotellese.pontemac "$good/Contents/Info.plist"
     plutil -insert CFBundleName -string Pontemac "$good/Contents/Info.plist"
     plutil -insert NSHumanReadableCopyright -string "© 2026 Joe Cotellese" "$good/Contents/Info.plist"
     plutil -insert NSBonjourServices -json '["_pontemac._tcp"]' "$good/Contents/Info.plist"
