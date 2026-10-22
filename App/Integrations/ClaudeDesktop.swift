@@ -194,16 +194,8 @@ private func updateConfig(
 )
     throws
 {
-    // Update the iMCP server entry
-    var updatedConfig = config
-    let imcpServerValue = try Value(imcpServer)
-
-    if var mcpServers = config["mcpServers"]?.objectValue {
-        mcpServers["iMCP"] = imcpServerValue
-        updatedConfig["mcpServers"] = .object(mcpServers)
-    } else {
-        updatedConfig["mcpServers"] = .object(["iMCP": imcpServerValue])
-    }
+    // Update the Pontemac server entry, replacing the fork's old iMCP entry
+    let updatedConfig = ClaudeDesktopConfigMerge.upserting(try Value(imcpServer), into: config)
 
     // First try with the security-scoped URL if available
     if let secureURL = try? getSecurityScopedConfigURL() {
