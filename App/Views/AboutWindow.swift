@@ -51,8 +51,9 @@ struct AboutView: View {
         VStack(spacing: 20) {
             HStack(alignment: .top, spacing: 24) {
                 // Left column - Icon
-                Image(.menuIconOn)
+                Image(systemName: MenuBarIcon.symbolName)
                     .resizable()
+                    .scaledToFit()
                     .frame(width: 128, height: 128)
                     .accessibilityHidden(true)
 

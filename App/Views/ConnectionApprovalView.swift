@@ -11,7 +11,7 @@ struct ConnectionApprovalView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             // Icon
-            Image(.menuIconOn)
+            Image(systemName: MenuBarIcon.symbolName)
                 .resizable()
                 .foregroundColor(.accentColor)
                 .aspectRatio(contentMode: .fit)
