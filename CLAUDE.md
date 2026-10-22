@@ -21,7 +21,20 @@ The project has two targets:
 
 ## Testing
 
-**This project has no automated tests.** Manual testing is done via:
+Automated tests cover the Reminders ReminderKit features. Prerequisites: a reminder list named "iMCP Tests", and Reminders permission for the terminal that runs them.
+
+```bash
+cd Packages/ReminderKitBridge
+swift test              # Bridge integration tests (writes to "iMCP Tests", deletes what it creates)
+swift run rkprobe all   # Live ReminderKit probes, expect 8 PASS lines; re-run on every macOS beta
+
+scripts/e2e-reminders.sh              # End to end against the installed app (make install, then relaunch iMCP first)
+scripts/e2e-reminders.sh --self-test  # Checks the script's assertions without touching Reminders
+```
+
+The e2e script is the only level that exercises the app sandbox. `rkprobe` writes to the "iMCP Probes" and "iMCP Probes Grocery" lists and leaves its reminders there.
+
+Manual testing is done via:
 - MCP Inspector: `npx @modelcontextprotocol/inspector {server-command}`
 - Companion app for debugging MCP servers
 
@@ -63,6 +76,8 @@ iMCP is a macOS MCP (Model Context Protocol) server that exposes personal data (
 - **ServerController** (`App/Controllers/ServerController.swift`) - The main orchestrator. Manages network lifecycle, service registry, connection approval flow, and trusted clients.
 
 - **Services** (`App/Services/`) - Each implements the `Service` protocol. Define tools via `ToolBuilder` result builder. Return JSON-LD via the Ontology package.
+
+- **ReminderKitBridge** (`Packages/ReminderKitBridge/`) - Local package that calls Apple's private ReminderKit framework for reminder fields EventKit cannot reach (flagged so far). `Reminders.swift` saves through EventKit first, then applies extras through the bridge; a ReminderKit failure returns `warnings` instead of failing the tool. Private API: this fork can never ship on the App Store.
 
 - **StdioProxy** (`CLI/main.swift`) - Actor that bridges network connections to stdio for MCP protocol. Handles Bonjour discovery and message buffering.
 
