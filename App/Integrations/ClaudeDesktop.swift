@@ -46,9 +46,9 @@ enum ClaudeDesktop {
             let fileExists = FileManager.default.fileExists(atPath: configPath)
 
             let alert = NSAlert()
-            alert.messageText = "Set Up iMCP Server"
+            alert.messageText = "Set Up Pontemac Server"
             alert.informativeText = """
-                This will \(fileExists ? "update" : "create") the iMCP server settings in Claude Desktop.
+                This will \(fileExists ? "update" : "create") the Pontemac server settings in Claude Desktop.
 
                 Location: \(configPath)
 
@@ -114,10 +114,10 @@ private func saveSecurityScopedAccess(for url: URL) throws {
 }
 
 private func loadConfig() throws -> ([String: Value], ClaudeDesktop.Config.MCPServer) {
-    log.debug("Creating default iMCP server configuration")
+    log.debug("Creating default Pontemac server configuration")
     let imcpServer = ClaudeDesktop.Config.MCPServer(
         command: Bundle.main.bundleURL
-            .appendingPathComponent("Contents/MacOS/imcp-server")
+            .appendingPathComponent("Contents/MacOS/pontemac-server")
             .path)
 
     var loadedConfiguration: [String: Value]?
@@ -234,7 +234,7 @@ private func updateConfig(
     // Finally, show save panel as a last resort
     log.debug("Showing save panel for new configuration location")
     let savePanel = NSSavePanel()
-    savePanel.message = "Choose where to save the iMCP server settings."
+    savePanel.message = "Choose where to save the Pontemac server settings."
     savePanel.prompt = "Set Up"
     savePanel.allowedContentTypes = [.json]
     savePanel.directoryURL = URL(fileURLWithPath: configPath).deletingLastPathComponent()

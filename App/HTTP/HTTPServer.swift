@@ -156,7 +156,7 @@ actor HTTPMCPServer {
                 router: router,
                 configuration: .init(
                     address: .hostname("127.0.0.1", port: port),
-                    serverName: "iMCP"
+                    serverName: Bundle.main.name ?? "Pontemac"
                 ),
                 logger: Logging.Logger(label: "me.mattt.iMCP.http")
             )

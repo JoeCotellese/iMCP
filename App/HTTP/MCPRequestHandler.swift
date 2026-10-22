@@ -45,7 +45,7 @@ actor MCPRequestHandler {
     private let serverVersion: String
 
     init() {
-        self.serverName = Bundle.main.name ?? "iMCP"
+        self.serverName = Bundle.main.name ?? "Pontemac"
         self.serverVersion = Bundle.main.shortVersionString ?? "unknown"
 
         // Start session cleanup task
@@ -271,7 +271,7 @@ actor MCPRequestHandler {
         }
 
         guard isEnabled else {
-            return makeToolResult(id: id, content: [["type": "text", "text": "iMCP is currently disabled"]], isError: true)
+            return makeToolResult(id: id, content: [["type": "text", "text": "Pontemac is currently disabled"]], isError: true)
         }
 
         guard let toolName = params["name"] as? String else {

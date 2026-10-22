@@ -84,7 +84,7 @@ struct ContentView: View {
 
                 MenuButton("Copy server command to clipboard", isMenuPresented: $isMenuPresented) {
                     let command = Bundle.main.bundleURL
-                        .appendingPathComponent("Contents/MacOS/imcp-server")
+                        .appendingPathComponent("Contents/MacOS/pontemac-server")
                         .path
 
                     let pasteboard = NSPasteboard.general
@@ -94,10 +94,10 @@ struct ContentView: View {
 
                 MenuButton("Copy Claude Code setup command", isMenuPresented: $isMenuPresented) {
                     let serverPath = Bundle.main.bundleURL
-                        .appendingPathComponent("Contents/MacOS/imcp-server")
+                        .appendingPathComponent("Contents/MacOS/pontemac-server")
                         .path
 
-                    let command = "claude mcp add iMCP --scope user -- \(serverPath)"
+                    let command = "claude mcp add Pontemac --scope user -- \(serverPath)"
 
                     let pasteboard = NSPasteboard.general
                     pasteboard.clearContents()
@@ -116,7 +116,7 @@ struct ContentView: View {
                     NSApp.activate(ignoringOtherApps: true)
                 }
 
-                MenuButton("About iMCP", isMenuPresented: $isMenuPresented) {
+                MenuButton("About Pontemac", isMenuPresented: $isMenuPresented) {
                     aboutWindowController.showWindow(nil)
                     NSApp.activate(ignoringOtherApps: true)
                 }
