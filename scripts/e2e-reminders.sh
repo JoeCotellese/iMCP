@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# ABOUTME: End-to-end acceptance tests for ReminderKit-backed reminder tools, run against the installed iMCP.app.
-# ABOUTME: Drives imcp-server through the MCP Inspector CLI; writes only to the "iMCP Tests" list and deletes what it creates.
+# ABOUTME: End-to-end acceptance tests for ReminderKit-backed reminder tools, run against the installed Pontemac.app.
+# ABOUTME: Drives pontemac-server through the MCP Inspector CLI; writes only to the "iMCP Tests" list and deletes what it creates.
 
 set -euo pipefail
 
-SERVER="${IMCP_SERVER:-/Applications/iMCP.app/Contents/MacOS/imcp-server}"
+SERVER="${IMCP_SERVER:-/Applications/Pontemac.app/Contents/MacOS/pontemac-server}"
 LIST="iMCP Tests"
 FAILURES=0
 CREATED=()

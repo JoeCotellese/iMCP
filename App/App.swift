@@ -8,7 +8,7 @@ struct App: SwiftUI.App {
     @State private var isMenuPresented = false
 
     var body: some Scene {
-        MenuBarExtra("iMCP", image: #"MenuIcon-\#(isEnabled ? "On" : "Off")"#) {
+        MenuBarExtra("Pontemac", image: #"MenuIcon-\#(isEnabled ? "On" : "Off")"#) {
             ContentView(
                 serverManager: serverController,
                 isEnabled: $isEnabled,

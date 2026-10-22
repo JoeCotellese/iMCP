@@ -1,60 +1,131 @@
+// ABOUTME: The About window: app name, version, copyright, contact and source links.
+// ABOUTME: Credits upstream iMCP and carries Apple's trademark acknowledgment for "Mac".
+
 import AppKit
 import SwiftUI
 
 class AboutWindowController: NSWindowController {
     convenience init() {
+        let hostingView = NSHostingView(rootView: AboutView(content: .main))
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 500),
+            contentRect: NSRect(origin: .zero, size: hostingView.fittingSize),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
+        window.title = "About Pontemac"
+        window.contentView = hostingView
         window.center()
-        window.title = "About iMCP"
-        window.contentView = NSHostingView(rootView: AboutView())
         window.isReleasedWhenClosed = false
         self.init(window: window)
     }
 }
 
-private struct AboutView: View {
+struct AboutContent {
+    var appName: String
+    var version: String?
+    var copyright: String?
+
+    static let contactEmail = "pontemac@cotellese.me"
+    static let contactURL = URL(string: "mailto:pontemac@cotellese.me")!
+    static let repositoryURL = URL(string: "https://github.com/JoeCotellese/pontemac-mcp")!
+    static let reportIssueURL = URL(string: "https://github.com/JoeCotellese/pontemac-mcp/issues/new")!
+    static let upstreamURL = URL(string: "https://github.com/mattt/iMCP")!
+    static let trademark =
+        "Mac is a trademark of Apple Inc., registered in the U.S. and other countries."
+
+    static var main: AboutContent {
+        AboutContent(
+            appName: Bundle.main.name ?? "Pontemac",
+            version: Bundle.main.shortVersionString,
+            copyright: Bundle.main.copyright
+        )
+    }
+}
+
+struct AboutView: View {
+    let content: AboutContent
+    @FocusState private var reportIssueFocused: Bool
+
     var body: some View {
-        VStack {
-            HStack(alignment: .top, spacing: 32) {
+        VStack(spacing: 20) {
+            HStack(alignment: .top, spacing: 24) {
                 // Left column - Icon
                 Image(.menuIconOn)
                     .resizable()
-                    .frame(width: 160, height: 160)
-                    .padding()
+                    .frame(width: 128, height: 128)
+                    .accessibilityHidden(true)
 
                 // Right column - App info and links
-                VStack(alignment: .leading, spacing: 24) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("iMCP")
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(content.appName)
                             .font(.system(size: 24, weight: .medium))
+                            .accessibilityAddTraits(.isHeader)
+                            .accessibilityIdentifier("aboutAppNameText")
 
-                        if let shortVersionString = Bundle.main.shortVersionString {
-                            Text("Version \(shortVersionString)")
-                                .foregroundStyle(.secondary)
+                        if let version = content.version {
+                            Text("Version \(version)")
+                                .textSelection(.enabled)
                         }
                     }
-                    .padding(.top, 20)
 
-                    Button("Report an Issue...") {
-                        NSWorkspace.shared.open(
-                            URL(string: "https://github.com/mattt/iMCP/issues/new")!)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Link(AboutContent.contactEmail, destination: AboutContent.contactURL)
+                            .accessibilityLabel("Email \(AboutContent.contactEmail)")
+                            .accessibilityIdentifier("aboutContactLink")
+
+                        Link("Source on GitHub", destination: AboutContent.repositoryURL)
+                            .accessibilityIdentifier("aboutRepositoryLink")
+
+                        Link("Based on iMCP by Mattt", destination: AboutContent.upstreamURL)
+                            .accessibilityIdentifier("aboutBasedOnLink")
                     }
+
+                    Button("Report an Issue") {
+                        NSWorkspace.shared.open(AboutContent.reportIssueURL)
+                    }
+                    .focused($reportIssueFocused)
+                    .accessibilityIdentifier("aboutReportIssueButton")
                 }
+                .padding(.top, 12)
             }
 
-            if let copyright = Bundle.main.copyright {
-                Text(copyright)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding()
+            VStack(spacing: 4) {
+                if let copyright = content.copyright {
+                    Text(copyright)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("aboutCopyrightText")
+                }
+                Text(AboutContent.trademark)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("aboutTrademarkText")
             }
+            .font(.caption)
         }
         .frame(width: 400)
-        .padding()
+        .padding(24)
+        .defaultFocus($reportIssueFocused, true)
     }
+}
+
+// Preview fixtures. The running app uses AboutContent.main, which reads the bundle.
+#Preview("About: typical") {
+    AboutView(
+        content: AboutContent(
+            appName: "Pontemac", version: "1.4.0", copyright: "© 2026 Joe Cotellese"))
+}
+
+#Preview("About: empty") {
+    AboutView(content: AboutContent(appName: "Pontemac", version: nil, copyright: nil))
+}
+
+#Preview("About: stress") {
+    AboutView(
+        content: AboutContent(
+            appName: "Pontemac",
+            version: "1.4.0 (2026.10.22-beta.12+build.4711)",
+            copyright: "© 2026 Joe Cotellese. All rights reserved. Portions © 2025 Mattt."))
 }

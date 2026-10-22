@@ -15,7 +15,7 @@ import struct Foundation.Date
 import class Foundation.JSONDecoder
 import class Foundation.JSONEncoder
 
-private let serviceType = "_mcp._tcp"
+private let serviceType = "_pontemac._tcp"
 private let serviceDomain = "local."
 
 private let log = Logger.server
@@ -539,7 +539,7 @@ final class ServerController: ObservableObject {
     private func sendClientConnectionNotification(clientName: String) {
         let content = UNMutableNotificationContent()
         content.title = "Client Connected"
-        content.body = "Client '\(clientName)' has connected to iMCP"
+        content.body = "Client '\(clientName)' has connected to Pontemac"
         content.threadIdentifier = "client-connection-\(clientName)"
 
         let request = UNNotificationRequest(
@@ -649,7 +649,7 @@ actor MCPConnectionManager {
 
         // Create the MCP server
         self.server = MCP.Server(
-            name: Bundle.main.name ?? "iMCP",
+            name: Bundle.main.name ?? "Pontemac",
             version: Bundle.main.shortVersionString ?? "unknown",
             capabilities: MCP.Server.Capabilities(
                 tools: .init(listChanged: true)
@@ -1169,9 +1169,9 @@ actor ServerNetworkManager {
             log.notice("Tool call received from \(connectionID, privacy: .public): \(params.name, privacy: .public)")
 
             guard await self.isEnabledState else {
-                log.notice("Tool call rejected: iMCP is disabled")
+                log.notice("Tool call rejected: Pontemac is disabled")
                 return CallTool.Result(
-                    content: [.text(text: "iMCP is currently disabled. Please enable it to use tools.", annotations: nil, _meta: nil)],
+                    content: [.text(text: "Pontemac is currently disabled. Please enable it to use tools.", annotations: nil, _meta: nil)],
                     isError: true
                 )
             }
@@ -1248,7 +1248,7 @@ actor ServerNetworkManager {
         guard isEnabledState != enabled else { return }
 
         isEnabledState = enabled
-        log.info("iMCP enabled state changed to: \(enabled)")
+        log.info("Pontemac enabled state changed to: \(enabled)")
 
         // Notify all connected clients that the tool list has changed
         for (_, connectionManager) in connections {

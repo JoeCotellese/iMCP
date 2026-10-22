@@ -26,7 +26,7 @@ var log = Logger(label: "me.mattt.iMCP.server") { StreamLogHandler.standardError
 #endif
 
 // Network setup
-let serviceType = "_mcp._tcp"
+let serviceType = "_pontemac._tcp"
 let parameters = NWParameters.tcp
 parameters.acceptLocalOnly = true
 parameters.includePeerToPeer = false
@@ -582,23 +582,23 @@ actor MCPService: Service {
 
                             // If we have results, select the most appropriate one
                             if !results.isEmpty {
-                                // First, try to find a service with "iMCP" in the endpoint description
+                                // First, try to find a service with "Pontemac" in the endpoint description
                                 let imcpServices = results.filter {
-                                    String(describing: $0.endpoint).contains("iMCP")
+                                    String(describing: $0.endpoint).contains("Pontemac")
                                 }
 
                                 let selectedService: NWBrowser.Result
 
                                 if !imcpServices.isEmpty {
-                                    // Prefer services with iMCP in the description
+                                    // Prefer services with Pontemac in the description
                                     selectedService = imcpServices.first!
                                     await log.info(
-                                        "Selected iMCP service: \(selectedService.endpoint)")
+                                        "Selected Pontemac service: \(selectedService.endpoint)")
                                 } else {
                                     // Fall back to the first available service
                                     selectedService = results.first!
                                     await log.info(
-                                        "No specific iMCP service found, using: \(selectedService.endpoint)"
+                                        "No specific Pontemac service found, using: \(selectedService.endpoint)"
                                     )
                                 }
 
@@ -840,14 +840,13 @@ actor ConfigBasedMCPService: Service {
     private var bonjourService: MCPService?
 
     /// Possible config file locations, checked in order.
-    /// Non-sandboxed path is checked first, then sandboxed container path.
+    /// Only Pontemac's sandbox container: the unsandboxed Application Support/iMCP path
+    /// is shared with upstream iMCP and could point this CLI at the wrong app.
     private static var configFilePaths: [URL] {
         let home = FileManager.default.homeDirectoryForCurrentUser
         return [
-            // Non-sandboxed path (if app runs without sandbox)
-            home.appendingPathComponent("Library/Application Support/iMCP/transport.json"),
-            // Sandboxed container path (default for App Store / sandboxed builds)
-            home.appendingPathComponent("Library/Containers/com.appjawn.iMCP/Data/Library/Application Support/iMCP/transport.json")
+            // Sandboxed container path (Pontemac is always sandboxed)
+            home.appendingPathComponent("Library/Containers/com.joecotellese.pontemac/Data/Library/Application Support/iMCP/transport.json")
         ]
     }
 
@@ -895,7 +894,7 @@ actor ConfigBasedMCPService: Service {
             for path in Self.configFilePaths {
                 await log.error("  - \(path.path)")
             }
-            await log.error("Make sure iMCP app is running")
+            await log.error("Make sure Pontemac app is running")
             throw ConfigError.configNotFound
         }
 
