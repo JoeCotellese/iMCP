@@ -18,7 +18,7 @@ public actor ReminderKitBridge {
     }
 
     /// Writes `edit` to one reminder in a single save request, then reads its extras back with a fresh store.
-    /// `list` is the reminder's EventKit calendar identifier, for list-level edits.
+    /// An empty edit only reads. `list` is the reminder's EventKit calendar identifier, for list-level edits.
     public func apply(_ edit: ReminderEdit, reminder: UUID, list: UUID) -> ApplyResult {
         do {
             try load()
