@@ -32,6 +32,27 @@ private let testListName = "iMCP Tests"
         #expect(read.extras[reminderID]?.flagged == true)
     }
 
+    @Test func unsupportedAccountSkipsTags() {
+        let plan = planTags(
+            add: ["errands"], remove: ["home"], current: ["home"],
+            supportsHashtags: false, accountName: "Exchange", sanitize: { $0 }
+        )
+
+        #expect(plan.add.isEmpty)
+        #expect(plan.remove.isEmpty)
+        #expect(plan.warnings == ["tags not supported for account 'Exchange'"])
+    }
+
+    @Test func normalizesTagNames() {
+        let plan = planTags(
+            add: ["#errands", "Errands", " my tag ", "mytag", "#", ""], remove: [], current: [],
+            supportsHashtags: true, accountName: "iCloud", sanitize: { $0.replacingOccurrences(of: " ", with: "") }
+        )
+
+        #expect(plan.add == ["errands", "mytag"])
+        #expect(plan.warnings.isEmpty)
+    }
+
     @Test func unavailableFrameworkReturnsWarning() async {
         let bridge = ReminderKitBridge(frameworkPath: "/nonexistent/ReminderKit.framework/ReminderKit")
 
