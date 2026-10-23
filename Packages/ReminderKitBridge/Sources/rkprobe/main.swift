@@ -1,7 +1,7 @@
 // ABOUTME: Live probes that verify ReminderKit features (flags, tags, subtasks, sections, grocery) on real data.
 // ABOUTME: Creates test reminders through EventKit in dedicated "iMCP Probes" lists, then writes via ReminderKit.
 //
-// Usage: rkprobe all | ids | flagged | tag-remove | subtask-create | subtask-reparent | section-create | section-move | grocery
+// Usage: rkprobe all | ids | flagged | tag-remove | tag-capability | tag-sanitize | subtask-create | subtask-reparent | section-create | section-move | grocery
 
 import EventKit
 import Foundation
@@ -113,7 +113,7 @@ func probeTagRemove() throws -> String {
     _ = addContext.addHashtag(type: 0, name: "probekeep")
     _ = addContext.addHashtag(type: 0, name: "proberemove")
     try save(addRequest)
-    let added = tagNames(try fetchReminder(try newStore(), id))
+    let added = try tagNames(try fetchReminder(try newStore(), id))
     guard added == ["probekeep", "proberemove"] else { throw ProbeFailure(description: "after add: \(added)") }
 
     let store2 = try newStore()
@@ -126,9 +126,45 @@ func probeTagRemove() throws -> String {
     else { throw ProbeFailure(description: "proberemove not in change item hashtags") }
     removeContext.removeHashtag(target)
     try save(removeRequest)
-    let remaining = tagNames(try fetchReminder(try newStore(), id))
+    let remaining = try tagNames(try fetchReminder(try newStore(), id))
     guard remaining == ["probekeep"] else { throw ProbeFailure(description: "after remove: \(remaining)") }
     return "\(ekReminder.title!) tags \(added) -> \(remaining)"
+}
+
+/// Change item for a fresh reminder in the probe list, from a save request that is never saved.
+func unsavedChangeItem(_ title: String) throws -> (RReminder, RReminderChangeItem) {
+    let ekReminder = try makeReminder(title, in: try probeCalendar(named: probeListName))
+    let store = try newStore()
+    let reminder = try fetchReminder(store, try remID(ekReminder))
+    let item = cast(try newSaveRequest(store).updateReminder(reminder as AnyObject), to: RReminderChangeItem.self)
+    return (reminder, item)
+}
+
+func probeTagCapability() throws -> String {
+    let (reminder, item) = try unsavedChangeItem("probe-tagcapability-\(stamp())")
+    try requireSelector(item as AnyObject, "accountCapabilities")
+    guard let capabilities = item.accountCapabilities else { throw ProbeFailure(description: "no accountCapabilities") }
+    try requireSelector(capabilities, "supportsHashtags")
+    let supports = cast(capabilities, to: RAccountCapabilities.self).supportsHashtags
+    try requireSelector(reminder as AnyObject, "account")
+    guard let account = reminder.account else { throw ProbeFailure(description: "no account") }
+    try requireSelector(account, "displayName")
+    let name = cast(account, to: RAccount.self).displayName ?? "nil"
+    guard supports else { throw ProbeFailure(description: "supportsHashtags false for account '\(name)'") }
+    return "account '\(name)' supportsHashtags=true"
+}
+
+func probeTagSanitize() throws -> String {
+    let (_, item) = try unsavedChangeItem("probe-tagsanitize-\(stamp())")
+    guard let context = item.hashtagContext else { throw ProbeFailure(description: "no hashtagContext") }
+    try requireSelector(context, "nameWithDisallowedCharactersReplaced:")
+    let tags = cast(context, to: RHashtagContextChangeItem.self)
+    let inputs = ["errands123", "Home", "my tag", "a-b_c", "x!y", "#lead", "caf\u{e9}"]
+    let outputs = inputs.map { "\($0) -> \(tags.nameWithDisallowedCharactersReplaced($0) ?? "nil")" }
+    guard tags.nameWithDisallowedCharactersReplaced("errands123") == "errands123",
+          tags.nameWithDisallowedCharactersReplaced("Home") == "Home"
+    else { throw ProbeFailure(description: "plain names changed: \(outputs)") }
+    return outputs.joined(separator: ", ")
 }
 
 func probeSubtaskCreate() throws -> String {
@@ -295,6 +331,8 @@ let probes: [(String, () throws -> String)] = [
     ("ids", probeIDs),
     ("flagged", probeFlagged),
     ("tag-remove", probeTagRemove),
+    ("tag-capability", probeTagCapability),
+    ("tag-sanitize", probeTagSanitize),
     ("subtask-create", probeSubtaskCreate),
     ("subtask-reparent", probeSubtaskReparent),
     ("section-create", probeSectionCreate),

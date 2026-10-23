@@ -31,7 +31,7 @@ public actor ReminderKitBridge {
         var warnings: [String] = []
         if !edit.isEmpty {
             do {
-                try autoreleasepool { try write(edit, to: reminder) }
+                warnings += try autoreleasepool { try write(edit, to: reminder) }
             } catch {
                 warnings.append(warning(for: error, fields: edit.fieldNames, outcome: "not applied"))
             }
@@ -58,7 +58,8 @@ public actor ReminderKitBridge {
     }
 
     /// Builds one save request carrying every field of `edit` and saves it synchronously.
-    private func write(_ edit: ReminderEdit, to reminder: UUID) throws {
+    /// Returns warnings for parts skipped without failing the save, such as removing a tag the reminder lacks.
+    private func write(_ edit: ReminderEdit, to reminder: UUID) throws -> [String] {
         let store = try newStore()
         let request = try newSaveRequest(store)
         try requireSelector(request as AnyObject, "updateReminder:")
@@ -72,7 +73,57 @@ public actor ReminderKitBridge {
             cast(context, to: RFlaggedContextChangeItem.self).flagged = flagged ? 1 : 0
         }
 
+        let warnings = edit.hasTagChanges ? try writeTags(edit, item: item, reminder: remReminder) : []
+
         try save(request)
+        return warnings
+    }
+
+    /// Adds and removes the tags `planTags` decides on, on the change item of an unsaved request.
+    private func writeTags(_ edit: ReminderEdit, item: RReminderChangeItem, reminder: RReminder) throws -> [String] {
+        try requireSelector(item as AnyObject, "accountCapabilities")
+        guard let capabilities = item.accountCapabilities else {
+            throw ReminderKitError.unexpectedNil("REMReminderChangeItem accountCapabilities")
+        }
+        try requireSelector(capabilities, "supportsHashtags")
+        guard cast(capabilities, to: RAccountCapabilities.self).supportsHashtags else {
+            return planTags(
+                add: edit.addTags, remove: edit.removeTags, current: [],
+                supportsHashtags: false, accountName: try accountName(of: reminder), sanitize: { $0 }
+            ).warnings
+        }
+
+        try requireSelector(item as AnyObject, "hashtagContext")
+        guard let contextObject = item.hashtagContext else {
+            throw ReminderKitError.unexpectedNil("REMReminderChangeItem hashtagContext")
+        }
+        for selector in ["hashtags", "addHashtagWithType:name:", "removeHashtag:", "nameWithDisallowedCharactersReplaced:"] {
+            try requireSelector(contextObject, selector)
+        }
+        let context = cast(contextObject, to: RHashtagContextChangeItem.self)
+        let hashtags = objects(in: context.hashtags)
+        let current = try hashtags.map {
+            try requireSelector($0, "name")
+            return cast($0, to: RHashtag.self).name
+        }
+        let plan = planTags(
+            add: edit.addTags, remove: edit.removeTags, current: current,
+            supportsHashtags: true, accountName: "", sanitize: { context.nameWithDisallowedCharactersReplaced($0) ?? $0 }
+        )
+        for name in plan.remove {
+            if let index = current.firstIndex(of: name) { context.removeHashtag(hashtags[index]) }
+        }
+        for name in plan.add {
+            _ = context.addHashtag(type: 0, name: name)
+        }
+        return plan.warnings
+    }
+
+    private func accountName(of reminder: RReminder) throws -> String {
+        try requireSelector(reminder as AnyObject, "account")
+        guard let account = reminder.account else { return "unknown" }
+        try requireSelector(account, "displayName")
+        return cast(account, to: RAccount.self).displayName ?? "unknown"
     }
 
     private func fetchExtras(_ reminders: [UUID]) throws -> [UUID: ReminderExtras] {
@@ -89,7 +140,8 @@ public actor ReminderKitBridge {
             let remReminder = value as AnyObject
             try requireSelector(id, "uuid")
             try requireSelector(remReminder, "flagged")
-            extras[uuidOf(id)] = ReminderExtras(flagged: cast(remReminder, to: RReminder.self).flagged != 0)
+            let reminder = cast(remReminder, to: RReminder.self)
+            extras[uuidOf(id)] = ReminderExtras(flagged: reminder.flagged != 0, tags: try tagNames(reminder))
         }
         return extras
     }

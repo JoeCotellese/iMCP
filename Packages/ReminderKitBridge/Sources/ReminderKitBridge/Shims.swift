@@ -35,6 +35,15 @@ import Foundation
     @objc(hashtagContext) var hashtagContext: AnyObject? { get }
     @objc(flagged) var flagged: Int { get }
     @objc(parentReminderID) var parentReminderID: AnyObject? { get }
+    @objc(account) var account: AnyObject? { get }
+}
+
+@objc package protocol RAccount {
+    @objc(displayName) var displayName: String? { get }
+}
+
+@objc package protocol RAccountCapabilities {
+    @objc(supportsHashtags) var supportsHashtags: Bool { get }
 }
 
 @objc package protocol RHashtagContext {
@@ -77,6 +86,7 @@ import Foundation
     @objc(hashtagContext) var hashtagContext: AnyObject? { get }
     @objc(flaggedContext) var flaggedContext: AnyObject? { get }
     @objc(subtaskContext) var subtaskContext: AnyObject? { get }
+    @objc(accountCapabilities) var accountCapabilities: AnyObject? { get }
     @objc(parentReminderID) var parentReminderID: AnyObject? { get set }
 }
 
@@ -84,6 +94,7 @@ import Foundation
     @objc(hashtags) var hashtags: AnyObject? { get }
     @objc(addHashtagWithType:name:) func addHashtag(type: Int, name: String) -> AnyObject?
     @objc(removeHashtag:) func removeHashtag(_ hashtag: AnyObject)
+    @objc(nameWithDisallowedCharactersReplaced:) func nameWithDisallowedCharactersReplaced(_ name: String) -> String?
 }
 
 @objc package protocol RFlaggedContextChangeItem {
@@ -194,10 +205,15 @@ package func objects(in collection: AnyObject?) -> [AnyObject] {
     return []
 }
 
-package func tagNames(_ reminder: RReminder) -> [String] {
+/// Sorted tag names on a reminder. Throws instead of crashing when a hashtag selector disappears.
+package func tagNames(_ reminder: RReminder) throws -> [String] {
+    try requireSelector(reminder as AnyObject, "hashtagContext")
     guard let context = reminder.hashtagContext else { return [] }
-    return objects(in: cast(context, to: RHashtagContext.self).hashtags)
-        .map { cast($0, to: RHashtag.self).name }.sorted()
+    try requireSelector(context, "hashtags")
+    return try objects(in: cast(context, to: RHashtagContext.self).hashtags).map {
+        try requireSelector($0, "name")
+        return cast($0, to: RHashtag.self).name
+    }.sorted()
 }
 
 package func uuidOf(_ objectID: AnyObject) -> UUID { cast(objectID, to: RObjectID.self).uuid }
