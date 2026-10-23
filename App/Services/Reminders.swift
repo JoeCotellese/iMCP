@@ -1,4 +1,4 @@
-// ABOUTME: MCP tools for Apple Reminders: lists, fetch, get, create, update, complete and delete.
+// ABOUTME: MCP tools for Apple Reminders: lists, tags, fetch, get, create, update, complete and delete.
 // ABOUTME: EventKit does the saves; ReminderKitBridge adds the fields EventKit cannot reach, such as flagged.
 
 import EventKit
@@ -28,11 +28,20 @@ private func boolArgument(_ value: Value?) -> Bool? {
     }
 }
 
+/// Reads an array of strings; other element types are skipped
+private func stringArrayArgument(_ value: Value?) -> [String] {
+    guard case let .array(items) = value else { return [] }
+    return items.compactMap { $0.stringValue }
+}
+
 /// Adds ReminderKit extras, and any warnings about what did not apply, to a reminder's response object
 private func merging(_ value: Value, extras: ReminderExtras?, warnings: [String]) -> Value {
     guard case .object(var dict) = value else { return value }
     if let flagged = extras?.flagged {
         dict["flagged"] = .bool(flagged)
+    }
+    if let tags = extras?.tags {
+        dict["tags"] = .array(tags.map { .string($0) })
     }
     if !warnings.isEmpty {
         dict["warnings"] = .array(warnings.map { .string($0) })
@@ -174,6 +183,53 @@ final class RemindersService: Service {
                     "isSubscribed": .bool(reminderList.isSubscribed),
                 ])
             }
+        }
+
+        Tool(
+            name: "reminders_tags",
+            description: "List the tag names in use on any reminder, sorted. Reuse these instead of inventing near-duplicates",
+            inputSchema: .object(
+                properties: [:],
+                additionalProperties: false
+            ),
+            annotations: .init(
+                title: "List Reminder Tags",
+                readOnlyHint: true,
+                openWorldHint: false
+            )
+        ) { arguments in
+            try await self.activate()
+
+            guard EKEventStore.authorizationStatus(for: .reminder) == .fullAccess else {
+                log.error("Reminders access not authorized")
+                throw NSError(
+                    domain: "RemindersError", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Reminders access not authorized"]
+                )
+            }
+
+            // ReminderKit has no API that lists tag labels, so collect the tags on every reminder
+            let predicate = self.eventStore.predicateForReminders(in: nil)
+            let reminders = try await withCheckedThrowingContinuation { continuation in
+                self.eventStore.fetchReminders(matching: predicate) { fetchedReminders in
+                    continuation.resume(returning: fetchedReminders ?? [])
+                }
+            }
+            let readBack = await self.bridge.read(reminders.compactMap { UUID(uuidString: $0.calendarItemIdentifier) })
+            // An empty list after a failed read would look like "no tags", so fail the tool instead
+            if let warning = readBack.warnings.first {
+                throw NSError(
+                    domain: "RemindersError", code: 6,
+                    userInfo: [NSLocalizedDescriptionKey: warning]
+                )
+            }
+
+            var names: [String] = []
+            for tag in Set(readBack.extras.values.flatMap { $0.tags ?? [] }).sorted()
+            where !names.contains(where: { $0.caseInsensitiveCompare(tag) == .orderedSame }) {
+                names.append(tag)
+            }
+            return names.map { Value.string($0) }
         }
 
         Tool(
@@ -334,6 +390,10 @@ final class RemindersService: Service {
                     "flagged": .boolean(
                         description: "If true, the reminder appears in the Flagged list"
                     ),
+                    "tags": .array(
+                        description: "Tag names, without '#'. Call reminders_tags first to reuse existing tags",
+                        items: .string()
+                    ),
                 ],
                 required: ["title"],
                 additionalProperties: false
@@ -403,7 +463,8 @@ final class RemindersService: Service {
             // Save the reminder
             try self.eventStore.save(reminder, commit: true)
 
-            return await self.value(for: reminder, applying: ReminderEdit(flagged: boolArgument(arguments["flagged"])))
+            let edit = ReminderEdit(flagged: boolArgument(arguments["flagged"]), addTags: stringArrayArgument(arguments["tags"]))
+            return await self.value(for: reminder, applying: edit)
         }
 
         Tool(
@@ -549,7 +610,15 @@ final class RemindersService: Service {
                     ),
                     "flagged": .boolean(
                         description: "Set to true to flag the reminder, false to unflag it"
-                    )
+                    ),
+                    "addTags": .array(
+                        description: "Tag names to add, keeping the reminder's other tags",
+                        items: .string()
+                    ),
+                    "removeTags": .array(
+                        description: "Tag names to remove, keeping the reminder's other tags",
+                        items: .string()
+                    ),
                 ],
                 required: ["identifier"],
                 additionalProperties: false
@@ -649,7 +718,12 @@ final class RemindersService: Service {
 
             try self.eventStore.save(reminder, commit: true)
 
-            return await self.value(for: reminder, applying: ReminderEdit(flagged: boolArgument(arguments["flagged"])))
+            let edit = ReminderEdit(
+                flagged: boolArgument(arguments["flagged"]),
+                addTags: stringArrayArgument(arguments["addTags"]),
+                removeTags: stringArrayArgument(arguments["removeTags"])
+            )
+            return await self.value(for: reminder, applying: edit)
         }
 
         Tool(
