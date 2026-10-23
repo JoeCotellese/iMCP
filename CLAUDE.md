@@ -29,7 +29,7 @@ Automated tests cover the Reminders ReminderKit features and the Pontemac rebran
 ```bash
 cd Packages/ReminderKitBridge
 swift test              # Bridge integration tests (writes to "iMCP Tests", deletes what it creates)
-swift run rkprobe all   # Live ReminderKit probes, expect 8 PASS lines; re-run on every macOS beta
+swift run rkprobe all   # Live ReminderKit probes, expect 10 PASS lines; re-run on every macOS beta
 
 scripts/e2e-reminders.sh              # End to end against the installed app (make install, then relaunch Pontemac first)
 scripts/e2e-reminders.sh --self-test  # Checks the script's assertions without touching Reminders
@@ -84,7 +84,7 @@ Pontemac (a fork of iMCP) is a macOS MCP (Model Context Protocol) server that ex
 
 - **Services** (`App/Services/`) - Each implements the `Service` protocol. Define tools via `ToolBuilder` result builder. Return JSON-LD via the Ontology package.
 
-- **ReminderKitBridge** (`Packages/ReminderKitBridge/`) - Local package that calls Apple's private ReminderKit framework for reminder fields EventKit cannot reach (flagged so far). `Reminders.swift` saves through EventKit first, then applies extras through the bridge; a ReminderKit failure returns `warnings` instead of failing the tool. Private API: this fork can never ship on the App Store.
+- **ReminderKitBridge** (`Packages/ReminderKitBridge/`) - Local package that calls Apple's private ReminderKit framework for reminder fields EventKit cannot reach (flagged and tags so far). `Reminders.swift` saves through EventKit first, then applies extras through the bridge; a ReminderKit failure returns `warnings` instead of failing the tool. Private API: this fork can never ship on the App Store.
 
 - **StdioProxy** (`CLI/main.swift`) - Actor that bridges network connections to stdio for MCP protocol. Handles Bonjour discovery and message buffering.
 
